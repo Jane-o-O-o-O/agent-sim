@@ -133,3 +133,34 @@ class TestSandbox:
         s = str(sandbox)
         assert "Sandbox" in s
         assert "1" in s
+
+# [2026-04-24] Tests for test_environment
+class TestTestEnvironment:
+    """Test suite for test_environment — topology management."""
+
+    def setup_method(self):
+        """Setup test fixtures."""
+        self.fixture = {}
+        self.config = {"enabled": True, "debug": False}
+
+    def test_basic_topology_management(self):
+        """Test basic topology management functionality."""
+        result = process(self.fixture, config=self.config)
+        assert result is not None
+        assert result.get("status") == "success"
+
+    def test_topology_management_with_empty_input(self):
+        """Test topology management with empty input."""
+        result = process({}, config=self.config)
+        assert result is not None
+
+    def test_topology_management_error_handling(self):
+        """Test topology management error handling."""
+        with pytest.raises(ValueError):
+            process(None, config=self.config)
+
+    def test_topology_management_caching(self):
+        """Test topology management caching behavior."""
+        result1 = process(self.fixture, config=self.config)
+        result2 = process(self.fixture, config=self.config)
+        assert result1 == result2
