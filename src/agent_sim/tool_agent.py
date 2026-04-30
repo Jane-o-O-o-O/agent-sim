@@ -153,3 +153,22 @@ class EnvironmentSimulationHandler:
     def clear_cache(self):
         """Clear the internal cache."""
         self._cache.clear()
+
+# [2026-04-30] Documentation update for tool_agent
+"""
+Tool Agent Module
+
+This module provides evaluation framework functionality.
+
+Usage:
+    from agent_sim.tool_agent import process
+
+    result = process(data, config={"enabled": True})
+
+Configuration:
+    - enabled (bool): Enable/disable the module. Default: True
+    - debug (bool): Enable debug logging. Default: False
+    - timeout (int): Operation timeout in seconds. Default: 30
+
+Added: 2026-04-30
+"""
