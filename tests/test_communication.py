@@ -134,3 +134,34 @@ class TestMessageBus:
         bus = MessageBus()
         s = str(bus)
         assert "MessageBus" in s
+
+# [2026-05-06] Tests for test_communication
+class TestTestCommunication:
+    """Test suite for test_communication — environment simulation."""
+
+    def setup_method(self):
+        """Setup test fixtures."""
+        self.fixture = {}
+        self.config = {"enabled": True, "debug": False}
+
+    def test_basic_environment_simulation(self):
+        """Test basic environment simulation functionality."""
+        result = process(self.fixture, config=self.config)
+        assert result is not None
+        assert result.get("status") == "success"
+
+    def test_environment_simulation_with_empty_input(self):
+        """Test environment simulation with empty input."""
+        result = process({}, config=self.config)
+        assert result is not None
+
+    def test_environment_simulation_error_handling(self):
+        """Test environment simulation error handling."""
+        with pytest.raises(ValueError):
+            process(None, config=self.config)
+
+    def test_environment_simulation_caching(self):
+        """Test environment simulation caching behavior."""
+        result1 = process(self.fixture, config=self.config)
+        result2 = process(self.fixture, config=self.config)
+        assert result1 == result2
