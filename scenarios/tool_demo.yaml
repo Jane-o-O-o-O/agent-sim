@@ -1,0 +1,15 @@
+# 示例场景：Tool Agent 计算器
+name: tool-demo
+description: 演示 ToolAgent 工具调用能力
+steps: 3
+
+agents:
+  - name: calculator
+    type: tool
+    role: calculator
+    goals: ["执行计算任务"]
+
+  - name: requester
+    type: echo
+    role: requester
+    goals: ["发送计算请求"]
