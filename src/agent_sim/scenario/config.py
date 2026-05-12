@@ -49,7 +49,7 @@ class AgentConfig(BaseModel):
     @classmethod
     def valid_type(cls, v: str) -> str:
         """验证 Agent 类型。"""
-        valid_types = {"echo", "ping", "llm", "tool", "custom"}
+        valid_types = {"echo", "ping", "llm", "tool", "debate", "collaborate", "custom"}
         if v not in valid_types:
             raise ValueError(f"不支持的 Agent 类型: {v}，可选: {valid_types}")
         return v

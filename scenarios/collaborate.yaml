@@ -1,0 +1,32 @@
+name: team-collaboration
+description: 团队协作解题 — 协调者分解任务，工作者执行，审核者审核
+steps: 3
+
+agents:
+  - name: coordinator
+    type: collaborate
+    role: coordinator
+    goals: ["协调任务执行"]
+    context:
+      role_type: coordinator
+      workers: ["worker_1", "worker_2"]
+      subtasks: ["计算斐波那契数列前10项", "编写回文检测算法"]
+
+  - name: worker_1
+    type: collaborate
+    role: worker
+    goals: ["执行编程任务"]
+    context:
+      role_type: worker
+
+  - name: worker_2
+    type: collaborate
+    role: worker
+    goals: ["执行编程任务"]
+    context:
+      role_type: worker
+
+connections:
+  - from_agent: coordinator
+    to_agent: worker_1
+    topic: task_assignment

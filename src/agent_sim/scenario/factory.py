@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from agent_sim.agent.base import Agent
+from agent_sim.agent.debate_agent import CollaborateAgent, DebateAgent
 from agent_sim.agent.llm_agent import EchoLLMBackend, LLMAgent
 from agent_sim.agent.role import Role
 from agent_sim.agent.tool_agent import ToolAgent
@@ -99,6 +100,20 @@ def _create_agent(config: AgentConfig) -> Agent:
             context=config.context,
         )
 
+    if config.type == "debate":
+        return DebateAgent(
+            name=config.name,
+            role=role,
+            context=config.context,
+        )
+
+    if config.type == "collaborate":
+        return CollaborateAgent(
+            name=config.name,
+            role=role,
+            context=config.context,
+        )
+
     if config.type == "custom":
         return _load_custom_agent(config)
 
@@ -106,7 +121,7 @@ def _create_agent(config: AgentConfig) -> Agent:
     if agent_cls is None:
         raise ValueError(
             f"不支持的 Agent 类型: {config.type}，"
-            f"可选: {list(_BUILTIN_TYPES.keys()) + ['llm', 'tool', 'custom']}"
+            f"可选: {list(_BUILTIN_TYPES.keys()) + ['llm', 'tool', 'debate', 'collaborate', 'custom']}"
         )
 
     return agent_cls(

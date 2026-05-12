@@ -216,6 +216,108 @@ class LatencyEvaluator(Evaluator):
         )
 
 
+class NetworkHealthEvaluator(Evaluator):
+    """网络健康度评估器。
+
+    评估仿真中 Agent 通信网络的连接密度和健康度。
+    """
+
+    @property
+    def name(self) -> str:
+        return "network_health"
+
+    def __init__(self, threshold: float = 0.3) -> None:
+        self.threshold = threshold
+
+    def evaluate(self, data: dict[str, Any]) -> EvalResult:
+        """评估网络拓扑健康度。"""
+        topo = data.get("topology", {})
+        if not topo:
+            return EvalResult(
+                name=self.name,
+                score=0.0,
+                passed=False,
+                details={"reason": "no topology data"},
+            )
+
+        agents = topo.get("agents", 0)
+        links = topo.get("links", 0)
+        avg_degree = topo.get("avg_degree", 0)
+
+        if agents <= 1:
+            score = 1.0
+        else:
+            # 健康度 = min(1, avg_degree / (agents - 1))
+            # 全连接时 avg_degree = agents-1，score = 1.0
+            score = min(1.0, avg_degree / max(agents - 1, 1))
+
+        passed = score >= self.threshold
+        return EvalResult(
+            name=self.name,
+            score=score,
+            passed=passed,
+            details={
+                "agents": agents,
+                "links": links,
+                "avg_degree": round(avg_degree, 2),
+            },
+        )
+
+
+class ConversationFlowEvaluator(Evaluator):
+    """对话流均衡度评估器。
+
+    评估各 Agent 参与对话的均衡程度。
+    """
+
+    @property
+    def name(self) -> str:
+        return "conversation_flow"
+
+    def __init__(self, threshold: float = 0.5) -> None:
+        self.threshold = threshold
+
+    def evaluate(self, data: dict[str, Any]) -> EvalResult:
+        """评估对话均衡度。"""
+        counts = data.get("agent_message_counts", {})
+        if not counts:
+            return EvalResult(
+                name=self.name,
+                score=0.0,
+                passed=False,
+                details={"reason": "no agent message counts"},
+            )
+
+        if len(counts) == 1:
+            return EvalResult(
+                name=self.name,
+                score=1.0,
+                passed=True,
+                details={"agents": 1, "balance": 1.0},
+            )
+
+        values = list(counts.values())
+        max_count = max(values)
+        min_count = min(values)
+
+        # 均衡度 = 1 - (max-min)/max
+        balance = 1.0 - ((max_count - min_count) / max_count) if max_count > 0 else 0.0
+        score = balance
+        passed = score >= self.threshold
+
+        return EvalResult(
+            name=self.name,
+            score=score,
+            passed=passed,
+            details={
+                "agents": len(counts),
+                "balance": round(balance, 3),
+                "max_messages": max_count,
+                "min_messages": min_count,
+            },
+        )
+
+
 class EvalSuite:
     """评估套件。
 
