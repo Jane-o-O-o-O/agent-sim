@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from agent_sim.agent.base import Agent, AgentState
 from agent_sim.agent.llm_agent import EchoLLMBackend, LLMAgent, LLMBackend
+from agent_sim.agent.llm_backend import OpenAIBackend, OllamaBackend, create_backend
 from agent_sim.agent.role import Role
 from agent_sim.agent.tool_agent import Tool, ToolAgent
 from agent_sim.communication.bus import MessageBus
@@ -15,7 +16,7 @@ from agent_sim.scenario.config import AgentConfig, ConnectionConfig, ScenarioCon
 from agent_sim.scenario.factory import build_scenario
 from agent_sim.scenario.runner import RunResult, ScenarioRunner
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Agent",
@@ -39,6 +40,9 @@ __all__ = [
     "Tool",
     "ToolAgent",
     "get_logger",
+    "OpenAIBackend",
+    "OllamaBackend",
+    "create_backend",
     "load_scenario",
     "setup_logging",
 ]

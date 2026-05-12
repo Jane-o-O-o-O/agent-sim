@@ -1,4 +1,4 @@
-"""Scenario factory — builds agents and wires up simulation from ScenarioConfig."""
+"""Scenario factory -- builds agents and wires up simulation from ScenarioConfig."""
 from __future__ import annotations
 
 import importlib
@@ -7,6 +7,7 @@ from typing import Any
 
 from agent_sim.agent.base import Agent
 from agent_sim.agent.llm_agent import EchoLLMBackend, LLMAgent
+from agent_sim.agent.llm_backend import create_backend
 from agent_sim.agent.role import Role
 from agent_sim.agent.tool_agent import ToolAgent
 from agent_sim.communication.bus import MessageBus
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class PingAgent(Agent):
-    """Ping Agent：第一步发送 ping，收到 ping 回复 pong。"""
+    """Ping Agent: send ping on first step, reply pong to pings."""
 
     async def step(self) -> list[Message]:
         replies: list[Message] = []
@@ -46,7 +47,7 @@ class PingAgent(Agent):
 
 
 class EchoAgent(Agent):
-    """Echo Agent：回显收到的消息。"""
+    """Echo Agent: echo back received messages."""
 
     async def step(self) -> list[Message]:
         replies: list[Message] = []
@@ -62,34 +63,66 @@ class EchoAgent(Agent):
         return replies
 
 
-# 内置 Agent 类型映射
+# Builtin agent type mapping
 _BUILTIN_TYPES: dict[str, type[Agent]] = {
     "echo": EchoAgent,
     "ping": PingAgent,
 }
 
 
-def _create_agent(config: AgentConfig) -> Agent:
-    """从配置创建单个 Agent。
+def _build_llm_backend(config: AgentConfig) -> Any:
+    """Build LLM backend from AgentConfig.
+
+    Uses create_backend() factory for provider resolution.
+    Falls back to EchoLLMBackend when no backend specified.
 
     Args:
-        config: Agent 配置
+        config: Agent configuration with llm_backend, llm_model, and context
 
     Returns:
-        Agent 实例
+        LLMBackend instance
+    """
+    backend_name = config.llm_backend or "echo"
+
+    kwargs: dict[str, Any] = {}
+    if config.llm_model:
+        kwargs["model"] = config.llm_model
+
+    # Extract backend-specific params from context
+    ctx = config.context
+    for key in ("api_key", "base_url", "temperature", "max_tokens", "timeout"):
+        if key in ctx:
+            kwargs[key] = ctx[key]
+
+    try:
+        return create_backend(backend_name, **kwargs)
+    except ValueError:
+        logger.warning("Cannot create LLM backend '%s', falling back to EchoLLMBackend", backend_name)
+        return EchoLLMBackend()
+
+
+def _create_agent(config: AgentConfig) -> Agent:
+    """Create a single Agent from config.
+
+    Args:
+        config: Agent configuration
+
+    Returns:
+        Agent instance
 
     Raises:
-        ValueError: 不支持的 Agent 类型或配置错误
+        ValueError: Unsupported agent type or config error
     """
     role = Role(name=config.role, goals=config.goals)
 
     if config.type == "llm":
+        backend = _build_llm_backend(config)
         return LLMAgent(
             name=config.name,
             role=role,
             context=config.context,
             system_prompt=config.context.get("system_prompt", ""),
-            backend=EchoLLMBackend(),
+            backend=backend,
         )
 
     if config.type == "tool":
@@ -105,8 +138,8 @@ def _create_agent(config: AgentConfig) -> Agent:
     agent_cls = _BUILTIN_TYPES.get(config.type)
     if agent_cls is None:
         raise ValueError(
-            f"不支持的 Agent 类型: {config.type}，"
-            f"可选: {list(_BUILTIN_TYPES.keys()) + ['llm', 'tool', 'custom']}"
+            f"Unsupported agent type: {config.type}, "
+            f"available: {list(_BUILTIN_TYPES.keys()) + ['llm', 'tool', 'custom']}"
         )
 
     return agent_cls(
@@ -117,26 +150,26 @@ def _create_agent(config: AgentConfig) -> Agent:
 
 
 def _load_custom_agent(config: AgentConfig) -> Agent:
-    """从模块路径加载自定义 Agent 类。
+    """Load custom Agent class from module path.
 
     Args:
-        config: Agent 配置 (需要 module 和 class_name)
+        config: Agent config (requires module and class_name)
 
     Returns:
-        Agent 实例
+        Agent instance
 
     Raises:
-        ValueError: 配置缺少 module 或 class_name
+        ValueError: Missing module or class_name
     """
     if not config.module or not config.class_name:
-        raise ValueError("自定义 Agent 必须指定 module 和 class_name")
+        raise ValueError("Custom agent must specify module and class_name")
 
-    logger.info("加载自定义 Agent: %s.%s", config.module, config.class_name)
+    logger.info("Loading custom agent: %s.%s", config.module, config.class_name)
     mod = importlib.import_module(config.module)
     agent_cls = getattr(mod, config.class_name)
 
     if not (isinstance(agent_cls, type) and issubclass(agent_cls, Agent)):
-        raise ValueError(f"{config.module}.{config.class_name} 不是 Agent 子类")
+        raise ValueError(f"{config.module}.{config.class_name} is not an Agent subclass")
 
     role = Role(name=config.role, goals=config.goals)
     return agent_cls(
@@ -147,15 +180,15 @@ def _load_custom_agent(config: AgentConfig) -> Agent:
 
 
 def build_scenario(config: ScenarioConfig) -> tuple[Sandbox, MessageBus]:
-    """从场景配置构建 Sandbox 和 MessageBus。
+    """Build Sandbox and MessageBus from scenario config.
 
     Args:
-        config: 场景配置
+        config: Scenario configuration
 
     Returns:
-        (Sandbox, MessageBus) 元组
+        (Sandbox, MessageBus) tuple
     """
-    logger.info("构建场景: %s (%d agents)", config.name, len(config.agents))
+    logger.info("Building scenario: %s (%d agents)", config.name, len(config.agents))
 
     agents = [_create_agent(ac) for ac in config.agents]
     sandbox = Sandbox(agents=agents)
@@ -164,7 +197,7 @@ def build_scenario(config: ScenarioConfig) -> tuple[Sandbox, MessageBus]:
     for agent in agents:
         bus.register(agent)
 
-    # 处理连接配置: 发送初始消息
+    # Process connections: send initial messages
     for conn in config.connections:
         msg = Message(
             sender=conn.from_agent,
@@ -173,6 +206,6 @@ def build_scenario(config: ScenarioConfig) -> tuple[Sandbox, MessageBus]:
             msg_type=MessageType.DIRECT if conn.to_agent else MessageType.BROADCAST,
         )
         bus.send(msg)
-        logger.debug("发送连接消息: %s -> %s", conn.from_agent, conn.to_agent or "ALL")
+        logger.debug("Sending connection message: %s -> %s", conn.from_agent, conn.to_agent or "ALL")
 
     return sandbox, bus
