@@ -70,6 +70,42 @@ _BUILTIN_TYPES: dict[str, type[Agent]] = {
 }
 
 
+def _create_llm_backend(config: AgentConfig) -> Any:
+    """根据 AgentConfig 创建 LLM 后端。
+
+    Args:
+        config: Agent 配置，包含 llm_backend 和 llm_model 字段
+
+    Returns:
+        LLMBackend 实例
+    """
+    from agent_sim.agent.llm_backend import create_backend
+
+    provider = config.llm_backend or "echo"
+    kwargs: dict[str, Any] = {}
+
+    if config.llm_model:
+        # OpenAI 用 model 参数, Ollama 也用 model
+        kwargs["model"] = config.llm_model
+
+    # 从 context 提取后端特定参数
+    ctx = config.context
+    if provider == "openai":
+        for key in ("api_key", "base_url", "temperature", "max_tokens", "timeout"):
+            if key in ctx:
+                kwargs[key] = ctx[key]
+        if "extra_headers" in ctx:
+            kwargs["extra_headers"] = ctx["extra_headers"]
+    elif provider == "ollama":
+        for key in ("base_url", "temperature", "num_predict", "timeout"):
+            if key in ctx:
+                kwargs[key] = ctx[key]
+        if "extra_options" in ctx:
+            kwargs["extra_options"] = ctx["extra_options"]
+
+    return create_backend(provider, **kwargs)
+
+
 def _create_agent(config: AgentConfig) -> Agent:
     """从配置创建单个 Agent。
 
@@ -85,12 +121,13 @@ def _create_agent(config: AgentConfig) -> Agent:
     role = Role(name=config.role, goals=config.goals)
 
     if config.type == "llm":
+        backend = _create_llm_backend(config)
         return LLMAgent(
             name=config.name,
             role=role,
             context=config.context,
             system_prompt=config.context.get("system_prompt", ""),
-            backend=EchoLLMBackend(),
+            backend=backend,
         )
 
     if config.type == "tool":
