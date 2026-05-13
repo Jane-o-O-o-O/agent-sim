@@ -1,22 +1,18 @@
-# 示例场景：Ping-Pong 多 Agent 通信
 name: ping-pong
-description: 演示 Coordinator 和 Worker 之间的 Ping-Pong 通信模式
+description: 经典 Ping-Pong 通信测试
 steps: 5
-
 agents:
-  - name: coordinator
+  - name: pinger
     type: ping
-    role: coordinator
-    goals: ["协调任务分配"]
+    role: sender
+    goals: [发送 ping 消息]
     context:
-      targets: ["worker_1", "worker_2"]
-
-  - name: worker_1
+      targets: [ponger]
+  - name: ponger
     type: echo
-    role: worker
-    goals: ["执行分析任务"]
-
-  - name: worker_2
-    type: echo
-    role: worker
-    goals: ["执行计算任务"]
+    role: receiver
+    goals: [回显收到的消息]
+connections:
+  - from_agent: pinger
+    to_agent: ponger
+    topic: ping

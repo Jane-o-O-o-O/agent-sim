@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import importlib
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from agent_sim.agent.base import Agent
 from agent_sim.agent.debate_agent import CollaborateAgent, DebateAgent
 from agent_sim.agent.llm_agent import EchoLLMBackend, LLMAgent
+from agent_sim.agent.memory_agent import MemoryAgent
 from agent_sim.agent.role import Role
 from agent_sim.agent.tool_agent import ToolAgent
 from agent_sim.communication.bus import MessageBus
@@ -63,11 +64,136 @@ class EchoAgent(Agent):
         return replies
 
 
-# 内置 Agent 类型映射
-_BUILTIN_TYPES: dict[str, type[Agent]] = {
-    "echo": EchoAgent,
-    "ping": PingAgent,
-}
+# Type alias for agent factory functions
+AgentFactory = Callable[[AgentConfig], Agent]
+
+# Agent type registry — maps type name to factory function
+_AGENT_REGISTRY: dict[str, AgentFactory] = {}
+
+
+def register_agent_type(type_name: str, factory: AgentFactory) -> None:
+    """注册自定义 Agent 类型到工厂注册表。
+
+    Args:
+        type_name: 类型名称（用于 YAML 配置中的 type 字段）
+        factory: 工厂函数，接受 AgentConfig 返回 Agent 实例
+
+    Raises:
+        ValueError: 类型名已被注册
+
+    Example:
+        >>> register_agent_type("my_agent", lambda cfg: MyAgent(name=cfg.name))
+    """
+    if type_name in _AGENT_REGISTRY:
+        raise ValueError(f"Agent 类型 '{type_name}' 已注册")
+    _AGENT_REGISTRY[type_name] = factory
+    logger.info("注册 Agent 类型: %s", type_name)
+
+
+def unregister_agent_type(type_name: str) -> None:
+    """注销 Agent 类型。
+
+    Args:
+        type_name: 类型名称
+
+    Raises:
+        KeyError: 类型不存在
+    """
+    if type_name not in _AGENT_REGISTRY:
+        raise KeyError(f"Agent 类型 '{type_name}' 未注册")
+    del _AGENT_REGISTRY[type_name]
+
+
+def get_registered_types() -> list[str]:
+    """获取所有已注册的 Agent 类型名。"""
+    return list(_AGENT_REGISTRY.keys())
+
+
+def _create_echo(config: AgentConfig) -> Agent:
+    """创建 EchoAgent。"""
+    return EchoAgent(
+        name=config.name,
+        role=Role(name=config.role, goals=config.goals),
+        context=config.context,
+    )
+
+
+def _create_ping(config: AgentConfig) -> Agent:
+    """创建 PingAgent。"""
+    return PingAgent(
+        name=config.name,
+        role=Role(name=config.role, goals=config.goals),
+        context=config.context,
+    )
+
+
+def _create_llm(config: AgentConfig) -> Agent:
+    """创建 LLMAgent。"""
+    backend = _create_llm_backend(config)
+    return LLMAgent(
+        name=config.name,
+        role=Role(name=config.role, goals=config.goals),
+        context=config.context,
+        system_prompt=config.context.get("system_prompt", ""),
+        backend=backend,
+    )
+
+
+def _create_memory(config: AgentConfig) -> Agent:
+    """创建 MemoryAgent。"""
+    backend = _create_llm_backend(config)
+    return MemoryAgent(
+        name=config.name,
+        role=Role(name=config.role, goals=config.goals),
+        context=config.context,
+        system_prompt=config.context.get("system_prompt", ""),
+        backend=backend,
+        memory_window=config.context.get("memory_window", 10),
+        include_facts=config.context.get("include_facts", True),
+    )
+
+
+def _create_tool(config: AgentConfig) -> Agent:
+    """创建 ToolAgent。"""
+    return ToolAgent(
+        name=config.name,
+        role=Role(name=config.role, goals=config.goals),
+        context=config.context,
+    )
+
+
+def _create_debate(config: AgentConfig) -> Agent:
+    """创建 DebateAgent。"""
+    return DebateAgent(
+        name=config.name,
+        role=Role(name=config.role, goals=config.goals),
+        context=config.context,
+    )
+
+
+def _create_collaborate(config: AgentConfig) -> Agent:
+    """创建 CollaborateAgent。"""
+    return CollaborateAgent(
+        name=config.name,
+        role=Role(name=config.role, goals=config.goals),
+        context=config.context,
+    )
+
+
+def _create_custom(config: AgentConfig) -> Agent:
+    """从模块路径加载自定义 Agent 类。"""
+    return _load_custom_agent(config)
+
+
+# Register all built-in types
+_AGENT_REGISTRY["echo"] = _create_echo
+_AGENT_REGISTRY["ping"] = _create_ping
+_AGENT_REGISTRY["llm"] = _create_llm
+_AGENT_REGISTRY["memory"] = _create_memory
+_AGENT_REGISTRY["tool"] = _create_tool
+_AGENT_REGISTRY["debate"] = _create_debate
+_AGENT_REGISTRY["collaborate"] = _create_collaborate
+_AGENT_REGISTRY["custom"] = _create_custom
 
 
 def _create_llm_backend(config: AgentConfig) -> Any:
@@ -85,10 +211,8 @@ def _create_llm_backend(config: AgentConfig) -> Any:
     kwargs: dict[str, Any] = {}
 
     if config.llm_model:
-        # OpenAI 用 model 参数, Ollama 也用 model
         kwargs["model"] = config.llm_model
 
-    # 从 context 提取后端特定参数
     ctx = config.context
     if provider == "openai":
         for key in ("api_key", "base_url", "temperature", "max_tokens", "timeout"):
@@ -107,7 +231,7 @@ def _create_llm_backend(config: AgentConfig) -> Any:
 
 
 def _create_agent(config: AgentConfig) -> Agent:
-    """从配置创建单个 Agent。
+    """从配置创建单个 Agent（使用注册表）。
 
     Args:
         config: Agent 配置
@@ -116,56 +240,15 @@ def _create_agent(config: AgentConfig) -> Agent:
         Agent 实例
 
     Raises:
-        ValueError: 不支持的 Agent 类型或配置错误
+        ValueError: 不支持的 Agent 类型
     """
-    role = Role(name=config.role, goals=config.goals)
-
-    if config.type == "llm":
-        backend = _create_llm_backend(config)
-        return LLMAgent(
-            name=config.name,
-            role=role,
-            context=config.context,
-            system_prompt=config.context.get("system_prompt", ""),
-            backend=backend,
-        )
-
-    if config.type == "tool":
-        return ToolAgent(
-            name=config.name,
-            role=role,
-            context=config.context,
-        )
-
-    if config.type == "debate":
-        return DebateAgent(
-            name=config.name,
-            role=role,
-            context=config.context,
-        )
-
-    if config.type == "collaborate":
-        return CollaborateAgent(
-            name=config.name,
-            role=role,
-            context=config.context,
-        )
-
-    if config.type == "custom":
-        return _load_custom_agent(config)
-
-    agent_cls = _BUILTIN_TYPES.get(config.type)
-    if agent_cls is None:
+    factory = _AGENT_REGISTRY.get(config.type)
+    if factory is None:
         raise ValueError(
             f"不支持的 Agent 类型: {config.type}，"
-            f"可选: {list(_BUILTIN_TYPES.keys()) + ['llm', 'tool', 'debate', 'collaborate', 'custom']}"
+            f"可选: {list(_AGENT_REGISTRY.keys())}"
         )
-
-    return agent_cls(
-        name=config.name,
-        role=role,
-        context=config.context,
-    )
+    return factory(config)
 
 
 def _load_custom_agent(config: AgentConfig) -> Agent:
@@ -216,7 +299,6 @@ def build_scenario(config: ScenarioConfig) -> tuple[Sandbox, MessageBus]:
     for agent in agents:
         bus.register(agent)
 
-    # 处理连接配置: 发送初始消息
     for conn in config.connections:
         msg = Message(
             sender=conn.from_agent,

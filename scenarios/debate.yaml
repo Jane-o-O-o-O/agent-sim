@@ -1,25 +1,25 @@
-name: ai-debate
-description: AI 安全性辩论 — 正反双方就 AI 发展进行结构化辩论
-steps: 4
-
+name: debate
+description: 双方辩论场景 — 正反方各 3 轮论证
+steps: 3
 agents:
   - name: pro_side
     type: debate
     role: advocate
-    goals: ["支持AI技术发展"]
+    goals: [支持 AI 发展]
     context:
       stance: "for"
-      style: "balanced"
-
+      style: balanced
   - name: con_side
     type: debate
     role: critic
-    goals: ["关注AI风险"]
+    goals: [反对 AI 发展]
     context:
       stance: "against"
-      style: "balanced"
-
+      style: aggressive
 connections:
   - from_agent: pro_side
     to_agent: con_side
-    topic: "AI 技术发展是利大于弊还是弊大于利？"
+    topic: AI safety
+  - from_agent: con_side
+    to_agent: pro_side
+    topic: AI safety

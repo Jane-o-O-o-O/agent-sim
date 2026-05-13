@@ -1,0 +1,37 @@
+name: team-collaborate
+description: 团队协作场景 — 协调者分发任务，工作者执行，审核者审核
+steps: 4
+agents:
+  - name: coordinator
+    type: collaborate
+    role: coordinator
+    goals: [协调任务分配]
+    context:
+      role_type: coordinator
+      workers: [worker_1, worker_2]
+      subtasks: [需求分析, 原型设计]
+  - name: worker_1
+    type: collaborate
+    role: worker
+    goals: [执行子任务]
+    context:
+      role_type: worker
+  - name: worker_2
+    type: collaborate
+    role: worker
+    goals: [执行子任务]
+    context:
+      role_type: worker
+  - name: reviewer
+    type: collaborate
+    role: reviewer
+    goals: [审核任务结果]
+    context:
+      role_type: reviewer
+connections:
+  - from_agent: coordinator
+    to_agent: worker_1
+    topic: task
+  - from_agent: coordinator
+    to_agent: worker_2
+    topic: task

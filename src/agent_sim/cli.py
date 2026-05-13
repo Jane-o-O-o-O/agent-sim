@@ -38,7 +38,9 @@ def main(verbose: bool) -> None:
               help="YAML 场景配置文件路径")
 @click.option("--output", "output_path", default=None, type=click.Path(),
               help="结果输出文件路径 (JSON)")
-def run(steps: int | None, example: bool, config_path: str | None, output_path: str | None) -> None:
+@click.option("--timeout", default=0, type=float, help="超时秒数 (0=无超时)")
+def run(steps: int | None, example: bool, config_path: str | None,
+        output_path: str | None, timeout: float) -> None:
     """运行仿真场景。
 
     \b
@@ -46,11 +48,12 @@ def run(steps: int | None, example: bool, config_path: str | None, output_path: 
       agent-sim run --example --steps 5
       agent-sim run --config scenarios/ping_pong.yaml
       agent-sim run --config scene.yaml --steps 20 --output result.json
+      agent-sim run --config scene.yaml --timeout 30
     """
     if config_path:
-        result = asyncio.run(_run_from_config(config_path, steps))
+        result = asyncio.run(_run_from_config(config_path, steps, timeout))
     elif example:
-        result = asyncio.run(_run_example(steps or 5))
+        result = asyncio.run(_run_example(steps or 5, timeout))
     else:
         click.echo("请指定 --example 或 --config，例如:")
         click.echo("  agent-sim run --example")
@@ -65,7 +68,9 @@ def run(steps: int | None, example: bool, config_path: str | None, output_path: 
         click.echo(f"\n结果已保存到: {output_path}", err=True)
 
 
-async def _run_from_config(config_path: str, steps: int | None) -> dict[str, Any]:
+async def _run_from_config(
+    config_path: str, steps: int | None, timeout: float = 0,
+) -> dict[str, Any]:
     """从 YAML 配置文件运行仿真。"""
     from agent_sim.log import get_logger
     from agent_sim.scenario.config import load_scenario
@@ -78,7 +83,9 @@ async def _run_from_config(config_path: str, steps: int | None) -> dict[str, Any
     logger.info("场景: %s (%d agents, %d steps)", config.name, len(config.agents), config.steps)
 
     sandbox, bus = build_scenario(config)
-    runner = ScenarioRunner(sandbox=sandbox, bus=bus)
+    runner = ScenarioRunner(
+        sandbox=sandbox, bus=bus, timeout_seconds=timeout,
+    )
 
     n_steps = steps or config.steps
     result = await runner.run(steps=n_steps)
@@ -91,10 +98,11 @@ async def _run_from_config(config_path: str, steps: int | None) -> dict[str, Any
         "duration_seconds": round(result.duration, 4),
         "agent_states": result.agent_states,
         "metrics": result.metrics,
+        "timed_out": result.timed_out,
     }
 
 
-async def _run_example(steps: int) -> dict[str, Any]:
+async def _run_example(steps: int, timeout: float = 0) -> dict[str, Any]:
     """运行内置示例：Ping-Pong 通信。"""
     from agent_sim.agent.base import Agent, AgentState
     from agent_sim.agent.role import Role
@@ -105,38 +113,31 @@ async def _run_example(steps: int) -> dict[str, Any]:
 
     class PingAgent(Agent):
         """发送 ping 并等待 pong。"""
-
         async def step(self) -> list[Message]:
             replies: list[Message] = []
             for msg in self.inbox:
                 if msg.content == "ping":
                     replies.append(Message(
-                        sender=self.name,
-                        receiver=msg.sender,
-                        content="pong",
-                        msg_type=MessageType.RESPONSE,
+                        sender=self.name, receiver=msg.sender,
+                        content="pong", msg_type=MessageType.RESPONSE,
                     ))
             self.inbox.clear()
             if self.step_count == 0:
                 for target in self.context.get("targets", []):
                     replies.append(Message(
-                        sender=self.name,
-                        receiver=target,
-                        content="ping",
-                        msg_type=MessageType.REQUEST,
+                        sender=self.name, receiver=target,
+                        content="ping", msg_type=MessageType.REQUEST,
                     ))
             self.increment_step()
             return replies
 
     class WorkerAgent(Agent):
         """处理任务请求。"""
-
         async def step(self) -> list[Message]:
             replies: list[Message] = []
             for msg in self.inbox:
                 replies.append(Message(
-                    sender=self.name,
-                    receiver=msg.sender,
+                    sender=self.name, receiver=msg.sender,
                     content=f"completed:{msg.content}",
                     msg_type=MessageType.RESPONSE,
                 ))
@@ -144,7 +145,6 @@ async def _run_example(steps: int) -> dict[str, Any]:
             self.increment_step()
             return replies
 
-    # 创建 Agent
     coordinator = PingAgent(
         name="coordinator",
         role=Role(name="coordinator", goals=["协调任务"]),
@@ -159,15 +159,13 @@ async def _run_example(steps: int) -> dict[str, Any]:
         role=Role(name="worker", goals=["执行任务"]),
     )
 
-    # 创建环境
     sandbox = Sandbox(agents=[coordinator, worker1, worker2])
     bus = MessageBus()
     bus.register(coordinator)
     bus.register(worker1)
     bus.register(worker2)
 
-    # 运行仿真
-    runner = ScenarioRunner(sandbox=sandbox, bus=bus)
+    runner = ScenarioRunner(sandbox=sandbox, bus=bus, timeout_seconds=timeout)
     result = await runner.run(steps=steps)
 
     return {
@@ -176,6 +174,7 @@ async def _run_example(steps: int) -> dict[str, Any]:
         "duration_seconds": round(result.duration, 4),
         "agent_states": result.agent_states,
         "metrics": result.metrics,
+        "timed_out": result.timed_out,
     }
 
 
@@ -207,27 +206,34 @@ def validate(config_path: str) -> None:
 @main.command()
 def info() -> None:
     """显示框架信息和版本。"""
+    from agent_sim.scenario.factory import get_registered_types
     click.echo(f"Agent Sim v{__version__}")
     click.echo("多智能体仿真框架")
+    click.echo()
+    click.echo("已注册 Agent 类型:")
+    for t in get_registered_types():
+        click.echo(f"  - {t}")
     click.echo()
     click.echo("核心模块:")
     click.echo("  agent         - Agent 基类和角色定义")
     click.echo("  agent.llm     - LLM Agent（可插拔后端）")
+    click.echo("  agent.memory  - Memory Agent（记忆增强）")
     click.echo("  agent.tool    - Tool Agent（工具调用）")
     click.echo("  communication - 消息模型和通信总线")
     click.echo("  environment   - 沙箱环境和状态管理")
     click.echo("  scenario      - 场景配置和运行器")
-    click.echo("  metrics       - 指标收集")
+    click.echo("  metrics       - 指标收集和评估")
     click.echo()
     click.echo("Python API:")
     click.echo("  from agent_sim import Agent, Sandbox, ScenarioRunner")
-    click.echo("  from agent_sim import LLMAgent, ToolAgent")
+    click.echo("  from agent_sim import LLMAgent, MemoryAgent, ToolAgent")
     click.echo("  from agent_sim import load_scenario, build_scenario")
     click.echo()
     click.echo("CLI 命令:")
     click.echo("  agent-sim run --example          运行内置示例")
     click.echo("  agent-sim run --config scene.yaml  从 YAML 配置运行")
     click.echo("  agent-sim validate scene.yaml    验证场景配置")
+    click.echo("  agent-sim compare a.yaml b.yaml  对比两个场景")
     click.echo("  agent-sim info                   显示此信息")
 
 
@@ -281,34 +287,31 @@ async def _run_and_report(
     lines.append(f"╚══════════════════════════════════════════════╝")
     lines.append("")
 
-    # 基础统计
     lines.append(f"场景: {config.description or config.name}")
     lines.append(f"步数: {result.steps_completed}/{n_steps}")
     lines.append(f"消息: {result.total_messages}")
     lines.append(f"耗时: {result.duration:.3f}s")
     lines.append(f"Agent 数: {len(result.agent_states)}")
+    if result.timed_out:
+        lines.append(f"⚠️ 仿真因超时终止")
     lines.append("")
 
-    # Agent 状态柱状图
     lines.append("Agent 状态:")
     lines.append(bar_chart(result.agent_states, width=30, char="█"))
     lines.append("")
 
-    # 步骤消息量折线图
     step_msgs = [d.get("messages_sent", 0) for d in result.metrics.get("step_details", [])]
     if step_msgs:
         lines.append("每步消息量:")
         lines.append(sparkline(step_msgs))
         lines.append("")
 
-    # 步骤详情表
     step_details = result.metrics.get("step_details", [])
     if step_details:
         lines.append("步骤详情:")
         lines.append(metrics_table(step_details))
         lines.append("")
 
-    # 拓扑信息
     from agent_sim.topology.topology import TopologyType, build_topology as bt
     try:
         topo = bt(TopologyType.MESH, list(result.agent_states.keys()))
@@ -318,7 +321,6 @@ async def _run_and_report(
     except Exception:
         pass
 
-    # 评估报告
     if run_eval:
         suite = EvalSuite.default()
         suite.add(ConversationFlowEvaluator())
@@ -395,3 +397,89 @@ async def _export_messages(
         export_messages_to_markdown(messages, output_path)
     elif fmt == "csv":
         export_messages_to_csv(messages, output_path)
+
+
+@main.command()
+@click.argument("config_a", type=click.Path(exists=True))
+@click.argument("config_b", type=click.Path(exists=True))
+@click.option("--steps", default=None, type=int, help="仿真步数")
+def compare(config_a: str, config_b: str, steps: int | None) -> None:
+    """对比两个场景配置的仿真结果。
+
+    \b
+    示例:
+      agent-sim compare scenarios/ping_pong.yaml scenarios/debate.yaml
+      agent-sim compare a.yaml b.yaml --steps 10
+    """
+    result = asyncio.run(_run_compare(config_a, config_b, steps))
+    click.echo(result)
+
+
+async def _run_compare(
+    config_a: str, config_b: str, steps: int | None,
+) -> str:
+    """运行两个场景并对比结果。"""
+    from agent_sim.scenario.config import load_scenario
+    from agent_sim.scenario.factory import build_scenario
+    from agent_sim.scenario.runner import ScenarioRunner
+    from agent_sim.viz.charts import bar_chart, sparkline
+
+    lines = []
+    lines.append("╔══════════════════════════════════════════════════╗")
+    lines.append("║  Agent Sim Compare                               ║")
+    lines.append("╚══════════════════════════════════════════════════╝")
+    lines.append("")
+
+    results = []
+    for path in [config_a, config_b]:
+        config = load_scenario(path)
+        sandbox, bus = build_scenario(config)
+        runner = ScenarioRunner(sandbox=sandbox, bus=bus)
+        n_steps = steps or config.steps
+        result = await runner.run(steps=n_steps)
+        results.append((config, result, bus))
+
+    # Side-by-side comparison table
+    cfg_a, res_a, bus_a = results[0]
+    cfg_b, res_b, bus_b = results[1]
+
+    lines.append(f"{'指标':<20} {'场景 A':<20} {'场景 B':<20}")
+    lines.append("-" * 60)
+    lines.append(f"{'名称':<20} {cfg_a.name:<20} {cfg_b.name:<20}")
+    lines.append(f"{'描述':<20} {(cfg_a.description or '-')[:18]:<20} {(cfg_b.description or '-')[:18]:<20}")
+    lines.append(f"{'Agent 数':<20} {len(cfg_a.agents):<20} {len(cfg_b.agents):<20}")
+    lines.append(f"{'步数':<20} {res_a.steps_completed:<20} {res_b.steps_completed:<20}")
+    lines.append(f"{'消息总数':<20} {res_a.total_messages:<20} {res_b.total_messages:<20}")
+    lines.append(f"{'耗时(s)':<20} {res_a.duration:<20.4f} {res_b.duration:<20.4f}")
+    lines.append(f"{'超时':<20} {'是' if res_a.timed_out else '否':<20} {'是' if res_b.timed_out else '否':<20}")
+    lines.append("")
+
+    # Per-step message comparison
+    msgs_a = [d.get("messages_sent", 0) for d in res_a.metrics.get("step_details", [])]
+    msgs_b = [d.get("messages_sent", 0) for d in res_b.metrics.get("step_details", [])]
+
+    if msgs_a or msgs_b:
+        lines.append("每步消息量:")
+        max_steps = max(len(msgs_a), len(msgs_b))
+        lines.append(f"  场景 A: {sparkline(msgs_a) if msgs_a else '(无)'}")
+        lines.append(f"  场景 B: {sparkline(msgs_b) if msgs_b else '(无)'}")
+        lines.append("")
+
+    # Agent states comparison
+    lines.append("Agent 状态:")
+    lines.append(f"  场景 A:")
+    lines.append(bar_chart(res_a.agent_states, width=25, char="█"))
+    lines.append(f"  场景 B:")
+    lines.append(bar_chart(res_b.agent_states, width=25, char="█"))
+    lines.append("")
+
+    # Per-agent message counts
+    lines.append("每 Agent 消息数:")
+    for name, res, bus in [("场景 A", res_a, bus_a), ("场景 B", res_b, bus_b)]:
+        counts = _count_agent_messages(bus.history)
+        if counts:
+            lines.append(f"  {name}:")
+            lines.append(bar_chart(counts, width=20, char="█"))
+    lines.append("")
+
+    return "\n".join(lines)

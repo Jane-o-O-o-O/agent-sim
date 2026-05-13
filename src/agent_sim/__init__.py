@@ -47,9 +47,15 @@ from agent_sim.metrics.evaluator import (
 )
 from agent_sim.scenario.checkpoint import Checkpoint, CheckpointManager
 from agent_sim.scenario.config import AgentConfig, ConnectionConfig, ScenarioConfig, load_scenario
-from agent_sim.scenario.factory import build_scenario
+from agent_sim.scenario.factory import (
+    build_scenario,
+    get_registered_types,
+    register_agent_type,
+    unregister_agent_type,
+)
 from agent_sim.scenario.hooks import LifecycleHooks
-from agent_sim.scenario.runner import RunResult, ScenarioRunner
+from agent_sim.scenario.recorder import EventRecorder, EventType, SimulationEvent
+from agent_sim.scenario.runner import RunResult, ScenarioRunner, SimulationTimeout
 from agent_sim.topology.topology import (
     NetworkTopology,
     TopologyType,
@@ -57,7 +63,7 @@ from agent_sim.topology.topology import (
 )
 from agent_sim.viz.charts import bar_chart, line_chart, metrics_table, sparkline
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "Agent",
@@ -79,6 +85,8 @@ __all__ = [
     "EvalResult",
     "EvalSuite",
     "Evaluator",
+    "EventRecorder",
+    "EventType",
     "FilterMiddleware",
     "KeyFactMemory",
     "LatencyEvaluator",
@@ -105,6 +113,8 @@ __all__ = [
     "Sandbox",
     "ScenarioConfig",
     "ScenarioRunner",
+    "SimulationEvent",
+    "SimulationTimeout",
     "SlidingWindowBuffer",
     "TokenBucketRateLimiter",
     "Tool",
@@ -119,9 +129,12 @@ __all__ = [
     "export_messages_to_markdown",
     "format_conversation_table",
     "get_logger",
+    "get_registered_types",
     "line_chart",
     "load_scenario",
     "metrics_table",
+    "register_agent_type",
     "setup_logging",
     "sparkline",
+    "unregister_agent_type",
 ]

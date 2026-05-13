@@ -18,6 +18,10 @@ from agent_sim.scenario.hooks import LifecycleHooks
 logger = logging.getLogger(__name__)
 
 
+class SimulationTimeout(Exception):
+    """仿真超时异常。"""
+
+
 class RunResult(BaseModel):
     """仿真运行结果。
 
@@ -28,6 +32,7 @@ class RunResult(BaseModel):
         duration: 运行耗时（秒）
         metrics: 指标摘要
         message_history: 所有消息历史
+        timed_out: 是否因超时终止
     """
 
     steps_completed: int = 0
@@ -36,13 +41,14 @@ class RunResult(BaseModel):
     duration: float = 0.0
     metrics: dict[str, Any] = Field(default_factory=dict)
     message_history: list[dict[str, Any]] = Field(default_factory=list)
+    timed_out: bool = False
 
 
 class ScenarioRunner:
     """场景运行器。
 
     协调 Sandbox、MessageBus 和 Agent，执行 N 步仿真循环。
-    支持生命周期钩子，可在仿真各阶段注入自定义逻辑。
+    支持生命周期钩子、并发执行和超时保护。
 
     每步流程：
     1. 触发 on_step_start 钩子
@@ -59,9 +65,11 @@ class ScenarioRunner:
         max_steps: 最大步数限制
         metrics: 指标收集器
         hooks: 生命周期钩子管理器
+        concurrent: 是否并发执行
+        timeout_seconds: 超时秒数（0 或 None 表示无超时）
 
     Example:
-        >>> runner = ScenarioRunner(sandbox=sandbox, bus=bus, max_steps=10)
+        >>> runner = ScenarioRunner(sandbox=sandbox, bus=bus, timeout_seconds=30)
         >>> runner.hooks.on_step_end(lambda step, msgs: print(f"Step {step}"))
         >>> result = await runner.run(steps=5)
     """
@@ -73,6 +81,7 @@ class ScenarioRunner:
         max_steps: int = 10,
         hooks: LifecycleHooks | None = None,
         concurrent: bool = False,
+        timeout_seconds: float = 0,
     ) -> None:
         self.sandbox = sandbox
         self.bus = bus
@@ -80,6 +89,7 @@ class ScenarioRunner:
         self.metrics = MetricsCollector()
         self.hooks = hooks or LifecycleHooks()
         self.concurrent = concurrent
+        self.timeout_seconds = timeout_seconds
 
     async def run(self, steps: int | None = None) -> RunResult:
         """运行仿真。
@@ -93,7 +103,38 @@ class ScenarioRunner:
         n_steps = steps or self.max_steps
         start_time = time.time()
 
-        # 设置所有 Agent 为 RUNNING
+        if self.timeout_seconds and self.timeout_seconds > 0:
+            try:
+                return await asyncio.wait_for(
+                    self._run_inner(n_steps, start_time),
+                    timeout=self.timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                elapsed = time.time() - start_time
+                logger.warning("仿真超时: %.1fs (限制 %.1fs)", elapsed, self.timeout_seconds)
+                return RunResult(
+                    steps_completed=self.sandbox.current_step,
+                    total_messages=self.metrics.total_messages,
+                    agent_states={name: agent.state for name, agent in self.sandbox.agents.items()},
+                    duration=elapsed,
+                    metrics=self.metrics.summary(),
+                    message_history=[
+                        {
+                            "sender": msg.sender,
+                            "receiver": msg.receiver,
+                            "content": msg.content,
+                            "type": msg.msg_type,
+                            "timestamp": msg.timestamp,
+                        }
+                        for msg in self.bus.history
+                    ],
+                    timed_out=True,
+                )
+        else:
+            return await self._run_inner(n_steps, start_time)
+
+    async def _run_inner(self, n_steps: int, start_time: float) -> RunResult:
+        """内部运行逻辑。"""
         for agent in self.sandbox.agents.values():
             old_state = agent.state
             agent.set_state(AgentState.RUNNING)
@@ -127,7 +168,6 @@ class ScenarioRunner:
                 messages_sent=step_messages,
             )
 
-        # 完成后更新状态
         for name, agent in self.sandbox.agents.items():
             if agent.state == AgentState.RUNNING.value:
                 old_state = agent.state
@@ -171,8 +211,6 @@ class ScenarioRunner:
     async def _run_step(self) -> int:
         """执行单步仿真。
 
-        根据 concurrent 配置选择顺序或并发执行。
-
         Returns:
             本步产生的消息数
         """
@@ -211,17 +249,10 @@ class ScenarioRunner:
         return step_messages
 
     async def _run_step_concurrent(self) -> int:
-        """并发执行单步仿真 — 所有 Agent 同时 step()。
-
-        使用 asyncio.gather 并行运行所有 Agent，提高 I/O 密集型场景性能。
-
-        Returns:
-            本步产生的消息数
-        """
+        """并发执行单步仿真 — 所有 Agent 同时 step()。"""
         agents = list(self.sandbox.agents.values())
 
         async def _step_agent(agent: Agent) -> list[Message]:
-            """单个 Agent 的 step 包装，捕获异常。"""
             try:
                 return await agent.step()
             except Exception as e:
@@ -238,10 +269,8 @@ class ScenarioRunner:
                 )
                 return []
 
-        # 并发执行所有 Agent step
         results = await asyncio.gather(*[_step_agent(a) for a in agents])
 
-        # 收集并路由消息
         step_messages = 0
         for messages in results:
             for msg in messages:

@@ -134,14 +134,15 @@ agent-sim/
 │   │   └── charts.py            # bar_chart, line_chart, sparkline, metrics_table
 │   ├── scenario/
 │   │   ├── config.py            # ScenarioConfig + YAML loader
-│   │   ├── factory.py           # Config → Sandbox/Bus builder
+│   │   ├── factory.py           # Config → Sandbox/Bus builder (registry pattern v0.6.0)
 │   │   ├── hooks.py             # LifecycleHooks
-│   │   ├── runner.py            # ScenarioRunner + RunResult (concurrent mode)
-│   │   └── checkpoint.py        # CheckpointManager (v0.5.0)
+│   │   ├── runner.py            # ScenarioRunner + RunResult (concurrent + timeout)
+│   │   ├── checkpoint.py        # CheckpointManager (v0.5.0)
+│   │   └── recorder.py          # EventRecorder (v0.6.0)
 │   └── metrics/
 │       ├── collector.py         # MetricsCollector
 │       └── evaluator.py         # EvalSuite + Evaluators
-├── tests/                       # 401 tests
+├── tests/                       # 432 tests
 ├── scenarios/                   # 示例 YAML 场景
 └── examples/                    # Python 示例脚本
 ```
@@ -338,6 +339,78 @@ agent-sim export --config scene.yaml --format csv -o messages.csv
 agent-sim export --config scene.yaml --format markdown -o messages.md
 ```
 
+### Agent 注册表 (v0.6.0)
+
+```python
+from agent_sim import register_agent_type, get_registered_types
+
+# 查看已注册类型
+print(get_registered_types())
+# ['echo', 'ping', 'llm', 'memory', 'tool', 'debate', 'collaborate', 'custom']
+
+# 注册自定义类型
+register_agent_type("my_agent", lambda cfg: MyAgent(name=cfg.name))
+# 之后可在 YAML 中使用 type: my_agent
+```
+
+### 事件记录器 (v0.6.0)
+
+```python
+from agent_sim import EventRecorder, LifecycleHooks, ScenarioRunner
+
+recorder = EventRecorder()
+hooks = LifecycleHooks()
+recorder.attach_to(hooks)  # 自动绑定所有事件
+
+runner = ScenarioRunner(sandbox=sandbox, bus=bus, hooks=hooks)
+result = await runner.run(steps=10)
+
+# 查看事件摘要
+print(recorder.summary())
+# {'total_events': 42, 'event_counts': {...}, 'duration': 1.5}
+
+# 按类型过滤
+errors = recorder.get_events(event_type="agent_error")
+messages = recorder.get_events(event_type="message", step=3)
+
+# 导出
+recorder.export_json("events.json")
+recorder.export_csv("events.csv")
+```
+
+### 仿真超时 (v0.6.0)
+
+```python
+from agent_sim import ScenarioRunner
+
+# 设置 30 秒超时
+runner = ScenarioRunner(sandbox=sandbox, bus=bus, timeout_seconds=30)
+result = await runner.run(steps=1000)
+
+if result.timed_out:
+    print(f"超时! 已完成 {result.steps_completed} 步")
+```
+
+### CLI 对比 (v0.6.0)
+
+```bash
+# 对比两个场景的仿真结果
+agent-sim compare scenarios/ping_pong.yaml scenarios/debate.yaml
+agent-sim compare a.yaml b.yaml --steps 10
+
+# 超时运行
+agent-sim run --config scene.yaml --timeout 30
+```
+
+### 内置示例场景 (v0.6.0)
+
+```bash
+# 可直接使用内置场景
+agent-sim run --config scenarios/ping_pong.yaml
+agent-sim run --config scenarios/debate.yaml
+agent-sim run --config scenarios/team_collaborate.yaml
+```
+
 ## Agent Types
 
 | Type | Description |
@@ -371,6 +444,7 @@ hooks.on_agent_state_change(lambda agent_name, old_state, new_state: ...)
 - [x] **v0.3.0** - OpenAI backend, evaluation system, lifecycle hooks, export
 - [x] **v0.4.0** - Memory system, topology, visualization, debate/collaborate agents
 - [x] **v0.5.0** - MemoryAgent, middleware pipeline, checkpointing, retry, concurrent, CSV export
+- [x] **v0.6.0** - Agent registry, EventRecorder, simulation timeout, CLI compare, built-in scenarios
 - [ ] **v1.0.0** - Stable API, complete documentation
 
 ## License
