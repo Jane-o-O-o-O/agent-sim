@@ -1,6 +1,8 @@
 """Scenario runner for executing simulations with lifecycle hooks."""
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 from typing import Any
 
@@ -12,6 +14,8 @@ from agent_sim.communication.message import Message
 from agent_sim.environment.sandbox import Sandbox
 from agent_sim.metrics.collector import MetricsCollector
 from agent_sim.scenario.hooks import LifecycleHooks
+
+logger = logging.getLogger(__name__)
 
 
 class RunResult(BaseModel):
@@ -68,12 +72,14 @@ class ScenarioRunner:
         bus: MessageBus,
         max_steps: int = 10,
         hooks: LifecycleHooks | None = None,
+        concurrent: bool = False,
     ) -> None:
         self.sandbox = sandbox
         self.bus = bus
         self.max_steps = max_steps
         self.metrics = MetricsCollector()
         self.hooks = hooks or LifecycleHooks()
+        self.concurrent = concurrent
 
     async def run(self, steps: int | None = None) -> RunResult:
         """运行仿真。
@@ -165,9 +171,17 @@ class ScenarioRunner:
     async def _run_step(self) -> int:
         """执行单步仿真。
 
+        根据 concurrent 配置选择顺序或并发执行。
+
         Returns:
             本步产生的消息数
         """
+        if self.concurrent:
+            return await self._run_step_concurrent()
+        return await self._run_step_sequential()
+
+    async def _run_step_sequential(self) -> int:
+        """顺序执行单步仿真。"""
         step_messages = 0
 
         for agent in self.sandbox.agents.values():
@@ -191,6 +205,51 @@ class ScenarioRunner:
                     "on_agent_error",
                     agent_name=agent.name,
                     error=str(e),
+                    step=self.sandbox.current_step,
+                )
+
+        return step_messages
+
+    async def _run_step_concurrent(self) -> int:
+        """并发执行单步仿真 — 所有 Agent 同时 step()。
+
+        使用 asyncio.gather 并行运行所有 Agent，提高 I/O 密集型场景性能。
+
+        Returns:
+            本步产生的消息数
+        """
+        agents = list(self.sandbox.agents.values())
+
+        async def _step_agent(agent: Agent) -> list[Message]:
+            """单个 Agent 的 step 包装，捕获异常。"""
+            try:
+                return await agent.step()
+            except Exception as e:
+                agent.set_state(AgentState.FAILED)
+                self.sandbox.state.add_event(
+                    "agent_error",
+                    {"agent": agent.name, "step": self.sandbox.current_step},
+                )
+                await self.hooks.trigger(
+                    "on_agent_error",
+                    agent_name=agent.name,
+                    error=str(e),
+                    step=self.sandbox.current_step,
+                )
+                return []
+
+        # 并发执行所有 Agent step
+        results = await asyncio.gather(*[_step_agent(a) for a in agents])
+
+        # 收集并路由消息
+        step_messages = 0
+        for messages in results:
+            for msg in messages:
+                self.bus.send(msg)
+                step_messages += 1
+                await self.hooks.trigger(
+                    "on_message",
+                    message=msg,
                     step=self.sandbox.current_step,
                 )
 

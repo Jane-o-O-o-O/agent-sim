@@ -1,12 +1,16 @@
 """Message bus for agent communication routing."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Any
 
 from agent_sim.communication.message import Message, MessageType
 
 if TYPE_CHECKING:
     from agent_sim.agent.base import Agent
+    from agent_sim.communication.middleware import MessageMiddleware
+
+logger = logging.getLogger(__name__)
 
 
 class MessageBus:
@@ -25,6 +29,7 @@ class MessageBus:
         self._agents: dict[str, Agent] = {}
         self._history: list[Message] = []
         self._dead_letters: list[Message] = []
+        self._middleware: list[MessageMiddleware] = []
 
     @property
     def agent_count(self) -> int:
@@ -74,13 +79,46 @@ class MessageBus:
         """发送消息。
 
         定向消息投递给 receiver；广播消息投递给除 sender 外的所有 Agent。
+        消息经过中间件管道处理后投递。
         """
-        self._history.append(message)
+        # 中间件管道
+        msg: Message | None = message
+        for mw in self._middleware:
+            if msg is None:
+                return
+            msg = mw.process(msg)
+        if msg is None:
+            return
 
-        if message.msg_type == MessageType.BROADCAST:
-            self._broadcast(message)
+        self._history.append(msg)
+
+        if msg.msg_type == MessageType.BROADCAST:
+            self._broadcast(msg)
         else:
-            self._deliver(message)
+            self._deliver(msg)
+
+    def add_middleware(self, middleware: MessageMiddleware) -> None:
+        """添加消息中间件。
+
+        中间件按添加顺序执行，先添加的先执行。
+
+        Args:
+            middleware: 中间件实例
+        """
+        self._middleware.append(middleware)
+
+    def remove_middleware(self, middleware_type: type) -> int:
+        """移除指定类型的所有中间件。
+
+        Args:
+            middleware_type: 中间件类型
+
+        Returns:
+            移除的数量
+        """
+        before = len(self._middleware)
+        self._middleware = [m for m in self._middleware if not isinstance(m, middleware_type)]
+        return before - len(self._middleware)
 
     def _broadcast(self, message: Message) -> None:
         """广播消息给除发送者外的所有 Agent。"""

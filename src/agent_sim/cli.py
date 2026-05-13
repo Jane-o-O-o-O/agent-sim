@@ -350,3 +350,48 @@ def _count_agent_messages(history: list) -> dict[str, int]:
         sender = msg.sender if hasattr(msg, "sender") else msg.get("sender", "unknown")
         counts[sender] = counts.get(sender, 0) + 1
     return counts
+
+
+@main.command()
+@click.option("--config", "config_path", required=True, type=click.Path(exists=True),
+              help="YAML 场景配置文件路径")
+@click.option("--steps", default=None, type=int, help="仿真步数")
+@click.option("--format", "fmt", type=click.Choice(["json", "markdown", "csv"]), default="json",
+              help="导出格式")
+@click.option("--output", "-o", "output_path", required=True, type=click.Path(),
+              help="输出文件路径")
+def export(config_path: str, steps: int | None, fmt: str, output_path: str) -> None:
+    """运行仿真并导出消息历史。
+
+    \b
+    示例:
+      agent-sim export --config scene.yaml -o messages.json
+      agent-sim export --config scene.yaml --format csv -o messages.csv
+      agent-sim export --config scene.yaml --format markdown -o messages.md
+    """
+    asyncio.run(_export_messages(config_path, steps, fmt, output_path))
+    click.echo(f"✅ 导出完成: {output_path} ({fmt})")
+
+
+async def _export_messages(
+    config_path: str, steps: int | None, fmt: str, output_path: str,
+) -> None:
+    """运行仿真并导出消息。"""
+    from agent_sim.export import export_messages_to_csv, export_messages_to_json, export_messages_to_markdown
+    from agent_sim.scenario.config import load_scenario
+    from agent_sim.scenario.factory import build_scenario
+    from agent_sim.scenario.runner import ScenarioRunner
+
+    config = load_scenario(config_path)
+    sandbox, bus = build_scenario(config)
+    runner = ScenarioRunner(sandbox=sandbox, bus=bus)
+    await runner.run(steps=steps or config.steps)
+
+    messages = bus.history
+
+    if fmt == "json":
+        export_messages_to_json(messages, output_path)
+    elif fmt == "markdown":
+        export_messages_to_markdown(messages, output_path)
+    elif fmt == "csv":
+        export_messages_to_csv(messages, output_path)

@@ -131,3 +131,34 @@ def format_conversation_table(messages: list[Message]) -> str:
         lines.append(fmt_row(row))
 
     return "\n".join(lines)
+
+
+def export_messages_to_csv(
+    messages: list[Message],
+    output_path: str | Path,
+) -> Path:
+    """将消息列表导出为 CSV 文件。
+
+    Args:
+        messages: 消息列表
+        output_path: 输出文件路径
+
+    Returns:
+        输出文件路径
+    """
+    import csv
+
+    path = Path(output_path)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["timestamp", "sender", "receiver", "type", "content", "correlation_id"])
+        for msg in messages:
+            writer.writerow([
+                _ts_to_iso(msg.timestamp),
+                msg.sender,
+                msg.receiver or "",
+                msg.msg_type,
+                msg.content,
+                msg.correlation_id or "",
+            ])
+    return path

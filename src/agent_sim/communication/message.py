@@ -30,6 +30,7 @@ class Message(BaseModel):
         timestamp: 创建时间戳
         metadata: 附加元数据
         message_id: 唯一消息 ID
+        correlation_id: 请求-响应关联 ID
     """
 
     sender: str
@@ -39,6 +40,7 @@ class Message(BaseModel):
     timestamp: float = Field(default_factory=time.time)
     metadata: dict[str, Any] = Field(default_factory=dict)
     message_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
+    correlation_id: str | None = None
 
     def __str__(self) -> str:
         target = self.receiver or "ALL"
