@@ -24,6 +24,7 @@ from agent_sim.communication.middleware import (
 from agent_sim.environment.sandbox import Sandbox
 from agent_sim.environment.state import EnvironmentState
 from agent_sim.export import (
+    HTMLReport,
     export_messages_to_csv,
     export_messages_to_json,
     export_messages_to_markdown,
@@ -45,6 +46,7 @@ from agent_sim.metrics.evaluator import (
     MessageVolumeEvaluator,
     NetworkHealthEvaluator,
 )
+from agent_sim.scenario.batch import BatchResult, BatchRunner
 from agent_sim.scenario.checkpoint import Checkpoint, CheckpointManager
 from agent_sim.scenario.config import AgentConfig, ConnectionConfig, ScenarioConfig, load_scenario
 from agent_sim.scenario.factory import (
@@ -55,6 +57,7 @@ from agent_sim.scenario.factory import (
 )
 from agent_sim.scenario.hooks import LifecycleHooks
 from agent_sim.scenario.recorder import EventRecorder, EventType, SimulationEvent
+from agent_sim.scenario.replay import ReplayEngine
 from agent_sim.scenario.runner import RunResult, ScenarioRunner, SimulationTimeout
 from agent_sim.topology.topology import (
     NetworkTopology,
@@ -63,13 +66,15 @@ from agent_sim.topology.topology import (
 )
 from agent_sim.viz.charts import bar_chart, line_chart, metrics_table, sparkline
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "Agent",
     "AgentConfig",
     "AgentParticipationEvaluator",
     "AgentState",
+    "BatchResult",
+    "BatchRunner",
     "Checkpoint",
     "CheckpointManager",
     "CollaborateAgent",
@@ -88,6 +93,7 @@ __all__ = [
     "EventRecorder",
     "EventType",
     "FilterMiddleware",
+    "HTMLReport",
     "KeyFactMemory",
     "LatencyEvaluator",
     "LifecycleHooks",
@@ -105,6 +111,7 @@ __all__ = [
     "NetworkTopology",
     "OpenAIBackend",
     "RateLimitMiddleware",
+    "ReplayEngine",
     "ResponseTracker",
     "RetryConfig",
     "RetryManager",

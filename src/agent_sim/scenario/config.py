@@ -1,6 +1,7 @@
 """Declarative scenario configuration models for YAML-based scenario definitions."""
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,7 @@ class ScenarioConfig(BaseModel):
     """场景声明式配置模型。
 
     可从 YAML 文件加载，定义完整的仿真场景。
+    支持 extends 字段实现场景继承。
 
     Attributes:
         name: 场景名称
@@ -119,8 +121,85 @@ class ScenarioConfig(BaseModel):
         return [a.name for a in self.agents]
 
 
+def _merge_configs(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """合并基础配置和覆盖配置。
+
+    覆盖规则：
+    - 顶层标量字段：子配置覆盖父配置
+    - agents 列表：子配置完全替换父配置
+    - connections 列表：子配置完全替换父配置
+    - metadata 字典：合并，子配置的值覆盖父配置
+
+    Args:
+        base: 基础配置字典
+        override: 覆盖配置字典
+
+    Returns:
+        合并后的配置字典
+    """
+    result = copy.deepcopy(base)
+
+    for key, value in override.items():
+        if key == "agents":
+            # agents 列表完全替换
+            result["agents"] = value
+        elif key == "connections":
+            # connections 列表完全替换
+            result["connections"] = value
+        elif key == "metadata" and isinstance(value, dict) and isinstance(result.get("metadata"), dict):
+            # metadata 合并
+            result["metadata"] = {**result["metadata"], **value}
+        elif value is not None:
+            result[key] = value
+
+    return result
+
+
+def _resolve_extends(data: dict[str, Any], base_dir: Path) -> dict[str, Any]:
+    """解析 extends 字段，递归合并父配置。
+
+    Args:
+        data: 场景配置字典
+        base_dir: 基准目录（用于解析相对路径）
+
+    Returns:
+        合并后的配置字典（不含 extends 字段）
+
+    Raises:
+        FileNotFoundError: 父配置文件不存在
+        ValueError: 循环引用检测
+    """
+    extends = data.get("extends")
+    if not extends:
+        return data
+
+    parent_path = base_dir / extends
+    if not parent_path.exists():
+        raise FileNotFoundError(f"父场景文件不存在: {parent_path}")
+
+    logger.info("加载父场景: %s", parent_path)
+    with open(parent_path) as f:
+        parent_data = yaml.safe_load(f)
+
+    if not isinstance(parent_data, dict):
+        raise ValueError(f"父场景文件格式错误: {parent_path}")
+
+    # 递归解析父配置的 extends
+    parent_data = _resolve_extends(parent_data, parent_path.parent)
+
+    # 合并：子配置覆盖父配置
+    merged = _merge_configs(parent_data, data)
+    # 移除 extends 字段，不再需要
+    merged.pop("extends", None)
+
+    return merged
+
+
 def load_scenario(path: str | Path) -> ScenarioConfig:
     """从 YAML 文件加载场景配置。
+
+    支持 extends 字段实现场景继承。子配置可以覆盖父配置的
+    steps、name 等字段，agents 列表完全替换。
 
     Args:
         path: YAML 文件路径
@@ -150,6 +229,9 @@ def load_scenario(path: str | Path) -> ScenarioConfig:
 
     if not isinstance(data, dict):
         raise ValueError(f"场景文件格式错误: 顶层应为字典，实际为 {type(data).__name__}")
+
+    # 解析 extends 继承
+    data = _resolve_extends(data, path.parent)
 
     try:
         config = ScenarioConfig(**data)

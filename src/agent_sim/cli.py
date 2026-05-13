@@ -358,7 +358,7 @@ def _count_agent_messages(history: list) -> dict[str, int]:
 @click.option("--config", "config_path", required=True, type=click.Path(exists=True),
               help="YAML 场景配置文件路径")
 @click.option("--steps", default=None, type=int, help="仿真步数")
-@click.option("--format", "fmt", type=click.Choice(["json", "markdown", "csv"]), default="json",
+@click.option("--format", "fmt", type=click.Choice(["json", "markdown", "csv", "html"]), default="json",
               help="导出格式")
 @click.option("--output", "-o", "output_path", required=True, type=click.Path(),
               help="输出文件路径")
@@ -379,7 +379,12 @@ async def _export_messages(
     config_path: str, steps: int | None, fmt: str, output_path: str,
 ) -> None:
     """运行仿真并导出消息。"""
-    from agent_sim.export import export_messages_to_csv, export_messages_to_json, export_messages_to_markdown
+    from agent_sim.export import (
+        HTMLReport,
+        export_messages_to_csv,
+        export_messages_to_json,
+        export_messages_to_markdown,
+    )
     from agent_sim.scenario.config import load_scenario
     from agent_sim.scenario.factory import build_scenario
     from agent_sim.scenario.runner import ScenarioRunner
@@ -387,7 +392,12 @@ async def _export_messages(
     config = load_scenario(config_path)
     sandbox, bus = build_scenario(config)
     runner = ScenarioRunner(sandbox=sandbox, bus=bus)
-    await runner.run(steps=steps or config.steps)
+    result = await runner.run(steps=steps or config.steps)
+
+    if fmt == "html":
+        report = HTMLReport(result, scenario_name=config.name)
+        report.save(output_path)
+        return
 
     messages = bus.history
 
@@ -483,3 +493,83 @@ async def _run_compare(
     lines.append("")
 
     return "\n".join(lines)
+
+
+@main.command()
+@click.argument("events_path", type=click.Path(exists=True))
+@click.option("--step", default=None, type=int, help="只显示指定步数的事件")
+@click.option("--type", "event_type", default=None, help="只显示指定类型的事件")
+@click.option("--summary", is_flag=True, help="只显示摘要")
+def replay(events_path: str, step: int | None, event_type: str | None, summary: bool) -> None:
+    """回放仿真事件日志。
+
+    加载 EventRecorder 导出的 JSON 文件，按步回放事件。
+
+    \\b
+    示例:
+      agent-sim replay events.json
+      agent-sim replay events.json --step 1
+      agent-sim replay events.json --type message
+      agent-sim replay events.json --summary
+    """
+    from agent_sim.scenario.replay import ReplayEngine
+
+    engine = ReplayEngine.from_json(events_path)
+
+    if summary:
+        s = engine.summary()
+        click.echo(f"事件总数: {s['total_events']}")
+        click.echo(f"总步数: {s['total_steps']}")
+        click.echo(f"事件类型分布:")
+        for etype, count in s["event_counts"].items():
+            click.echo(f"  {etype}: {count}")
+        return
+
+    events = engine._events
+    if step is not None:
+        events = engine.get_step(step)
+        click.echo(f"--- 步 {step} 的事件 ({len(events)} 个) ---")
+    if event_type is not None:
+        events = [e for e in events if e.event_type == event_type]
+
+    for event in events:
+        click.echo(f"  [{event.time_iso}] step={event.step} {event.event_type}")
+        if event.data:
+            click.echo(f"    data: {json.dumps(event.data, ensure_ascii=False)[:200]}")
+
+
+@main.command()
+@click.option("--config", "config_path", required=True, type=click.Path(exists=True),
+              help="YAML 场景配置文件路径")
+@click.option("--runs", default=5, type=int, help="运行次数")
+@click.option("--steps", default=None, type=int, help="仿真步数")
+@click.option("--timeout", default=0, type=float, help="超时秒数")
+@click.option("--output", "output_path", default=None, type=click.Path(),
+              help="结果输出文件路径 (JSON)")
+def batch(config_path: str, runs: int, steps: int | None, timeout: float,
+          output_path: str | None) -> None:
+    """批量运行仿真并统计结果。
+
+    \\b
+    示例:
+      agent-sim batch --config scene.yaml --runs 10
+      agent-sim batch --config scene.yaml --runs 5 --steps 20 --output stats.json
+    """
+    from agent_sim.scenario.batch import BatchRunner
+    from agent_sim.scenario.config import load_scenario
+
+    config = load_scenario(config_path)
+    n_steps = steps or config.steps
+
+    async def _run() -> dict[str, Any]:
+        runner = BatchRunner(runs=runs)
+        batch_result = await runner.run_from_config(config, timeout_seconds=timeout)
+        return batch_result.to_dict()
+
+    result = asyncio.run(_run())
+    result_json = json.dumps(result, indent=2, ensure_ascii=False)
+    click.echo(result_json)
+
+    if output_path:
+        Path(output_path).write_text(result_json, encoding="utf-8")
+        click.echo(f"\n结果已保存到: {output_path}", err=True)
