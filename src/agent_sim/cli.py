@@ -188,24 +188,30 @@ async def _run_example(steps: int, timeout: float = 0) -> dict[str, Any]:
 def validate(config_path: str) -> None:
     """验证 YAML 场景配置文件。
 
-    \b
+    提供详细的错误信息，一次性报告所有问题。
+
+    \\b
     示例:
       agent-sim validate scenarios/ping_pong.yaml
     """
-    from agent_sim.scenario.config import load_scenario
+    from agent_sim.scenario.validation import validate_scenario
 
-    try:
-        config = load_scenario(config_path)
-        click.echo(f"✅ 配置有效: {config.name}")
-        click.echo(f"   描述: {config.description or '(无)'}")
-        click.echo(f"   Agent 数: {len(config.agents)}")
-        click.echo(f"   仿真步数: {config.steps}")
-        click.echo(f"   连接数: {len(config.connections)}")
-        for agent_config in config.agents:
-            click.echo(f"   - {agent_config.name} ({agent_config.type})")
-    except Exception as e:
-        click.echo(f"❌ 配置无效: {e}", err=True)
+    errors = validate_scenario(config_path)
+    if errors:
+        click.echo(f"❌ 配置验证失败 ({len(errors)} 个问题):")
+        for err in errors:
+            click.echo(f"  • {err}")
         raise SystemExit(1)
+
+    from agent_sim.scenario.config import load_scenario
+    config = load_scenario(config_path)
+    click.echo(f"✅ 配置有效: {config.name}")
+    click.echo(f"   描述: {config.description or '(无)'}")
+    click.echo(f"   Agent 数: {len(config.agents)}")
+    click.echo(f"   仿真步数: {config.steps}")
+    click.echo(f"   连接数: {len(config.connections)}")
+    for agent_config in config.agents:
+        click.echo(f"   - {agent_config.name} ({agent_config.type})")
 
 
 @main.command()
@@ -737,3 +743,97 @@ async def _run_and_graph(config_path: str, steps: int | None, fmt: str) -> str:
         return graph.to_ascii_matrix()
     else:
         return graph.to_flow_summary()
+
+
+@main.command()
+def doctor() -> None:
+    """检查环境依赖和 Agent Sim 安装状态。
+
+    检查 Python 版本、依赖包、已注册的 Agent 类型和 LLM 后端。
+
+    \\b
+    示例:
+      agent-sim doctor
+    """
+    from agent_sim.scenario.factory import get_registered_types
+
+    lines = []
+    lines.append("🔍 Agent Sim 环境检查")
+    lines.append("=" * 40)
+
+    # Python version
+    v = sys.version_info
+    py_ok = v >= (3, 10)
+    status = "✅" if py_ok else "❌"
+    lines.append(f"{status} Python {v.major}.{v.minor}.{v.micro} (需要 3.10+)")
+
+    # Core dependencies
+    deps = [
+        ("pydantic", "pydantic"),
+        ("yaml", "PyYAML"),
+        ("click", "click"),
+        ("httpx", "httpx"),
+    ]
+    lines.append("")
+    lines.append("依赖包:")
+    for module_name, pkg_name in deps:
+        try:
+            mod = __import__(module_name)
+            ver = getattr(mod, "__version__", getattr(mod, "VERSION", "installed"))
+            lines.append(f"  ✅ {pkg_name}: {ver}")
+        except ImportError:
+            lines.append(f"  ❌ {pkg_name}: 未安装")
+
+    # Optional dependencies
+    lines.append("")
+    lines.append("可选依赖:")
+    optional = [("openai", "openai")]
+    for module_name, pkg_name in optional:
+        try:
+            mod = __import__(module_name)
+            ver = getattr(mod, "__version__", "installed")
+            lines.append(f"  ✅ {pkg_name}: {ver}")
+        except ImportError:
+            lines.append(f"  ⚠️ {pkg_name}: 未安装 (可选)")
+
+    # Registered agent types
+    lines.append("")
+    lines.append("已注册 Agent 类型:")
+    for t in get_registered_types():
+        lines.append(f"  ✅ {t}")
+
+    # Version
+    lines.append("")
+    lines.append(f"版本: agent-sim v{__version__}")
+
+    click.echo("\n".join(lines))
+
+
+@main.command()
+@click.option("--format", "fmt", type=click.Choice(["json", "yaml"]), default="yaml",
+              help="输出格式")
+@click.option("--output", "-o", "output_path", default=None, type=click.Path(),
+              help="输出文件路径")
+def schema(fmt: str, output_path: str | None) -> None:
+    """导出场景配置的 JSON Schema。
+
+    可用于 IDE 自动补全和 YAML 配置文件校验。
+
+    \\b
+    示例:
+      agent-sim schema
+      agent-sim schema --format json
+      agent-sim schema --format json -o scenario-schema.json
+    """
+    from agent_sim.scenario.validation import config_schema_json, config_schema_yaml
+
+    if fmt == "json":
+        content = config_schema_json()
+    else:
+        content = config_schema_yaml()
+
+    if output_path:
+        Path(output_path).write_text(content, encoding="utf-8")
+        click.echo(f"✅ Schema 已保存到: {output_path}")
+    else:
+        click.echo(content)
