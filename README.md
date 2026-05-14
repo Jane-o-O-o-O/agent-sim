@@ -777,6 +777,69 @@ agent-sim graph --config scene.yaml --format ascii
 agent-sim graph --config scene.yaml --format summary
 ```
 
+### Exception Hierarchy (v1.0.0)
+
+18 specialized exception types with backward-compatible inheritance.
+
+```python
+from agent_sim import (
+    AgentSimError,        # Base exception
+    ConfigValidationError,  # Invalid config (also ValueError)
+    AgentTypeError,       # Unknown agent type (also ValueError)
+    TopologyError,        # Topology issues (also ValueError)
+    LLMError,             # LLM backend issues (also ValueError/RuntimeError)
+    # ... and 13 more
+)
+
+# All catchable with standard exceptions too
+try:
+    config = load_scenario("bad.yaml")
+except ConfigValidationError as e:
+    print(f"Config error: {e}")  # Specific handling
+except ValueError:
+    print("Generic value error")  # Also caught
+```
+
+### Config Validation (v1.0.0)
+
+Detailed validation that reports ALL errors at once.
+
+```python
+from agent_sim.scenario.validation import validate_scenario, config_schema
+
+errors = validate_scenario("scene.yaml")
+if errors:
+    for err in errors:
+        print(f"  • {err}")
+
+# Export JSON Schema for IDE integration
+schema = config_schema()  # dict
+```
+
+```bash
+# Enhanced validation with multi-error reporting
+agent-sim validate scene.yaml
+
+# Export config schema
+agent-sim schema --format json -o schema.json
+```
+
+### CLI Tools (v1.0.0)
+
+```bash
+# Check environment
+agent-sim doctor
+
+# Export JSON Schema
+agent-sim schema
+agent-sim schema --format json -o scenario-schema.json
+
+# Shell completion
+agent-sim completion bash  # Add to ~/.bashrc
+agent-sim completion zsh   # Add to ~/.zshrc
+agent-sim completion fish  # Add to ~/.config/fish/config.fish
+```
+
 ## Agent Types
 
 | Type | Description |
@@ -814,7 +877,7 @@ hooks.on_agent_state_change(lambda agent_name, old_state, new_state: ...)
 - [x] **v0.7.0** - ReplayEngine, BatchRunner, HTML report, scenario inheritance, CLI replay/batch
 - [x] **v0.8.0** - AsyncEventBus, DynamicTopology, BenchmarkRunner, HealthMonitor, MetricAggregator, PluginRegistry, CLI benchmark/plugins
 - [x] **v0.9.0** - SimulationMonitor, TopologyScheduler, CommunicationProtocol, ScenarioTemplates, ConversationGraph, CLI init/graph
-- [ ] **v1.0.0** - Stable API, complete documentation
+- [x] **v1.0.0** - Exception hierarchy, config validation, JSON Schema, CLI doctor/schema/completion, py.typed
 
 ## License
 

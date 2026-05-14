@@ -115,7 +115,7 @@ from agent_sim.topology.topology import (
 from agent_sim.viz.charts import bar_chart, line_chart, metrics_table, sparkline
 from agent_sim.viz.conversation_graph import ConversationGraph
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "Agent",

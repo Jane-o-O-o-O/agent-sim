@@ -837,3 +837,38 @@ def schema(fmt: str, output_path: str | None) -> None:
         click.echo(f"✅ Schema 已保存到: {output_path}")
     else:
         click.echo(content)
+
+
+@main.command()
+@click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
+def completion(shell: str) -> None:
+    """生成 Shell 自动补全脚本。
+
+    将输出添加到你的 shell 配置文件中以启用 Tab 补全。
+
+    \\b
+    安装方法:
+      # Bash
+      eval "$(_AGENT_SIM_COMPLETE=bash_source agent-sim)"
+
+      # Zsh
+      eval "$(_AGENT_SIM_COMPLETE=zsh_source agent-sim)"
+
+      # Fish
+      eval (env _AGENT_SIM_COMPLETE=fish_source agent-sim)
+
+    \\b
+    示例:
+      agent-sim completion bash
+      agent-sim completion zsh
+      agent-sim completion fish
+    """
+    if shell == "bash":
+        click.echo('# Bash 自动补全 — 添加到 ~/.bashrc:')
+        click.echo('eval "$(_AGENT_SIM_COMPLETE=bash_source agent-sim)"')
+    elif shell == "zsh":
+        click.echo('# Zsh 自动补全 — 添加到 ~/.zshrc:')
+        click.echo('eval "$(_AGENT_SIM_COMPLETE=zsh_source agent-sim)"')
+    elif shell == "fish":
+        click.echo('# Fish 自动补全 — 添加到 ~/.config/fish/config.fish:')
+        click.echo('eval (env _AGENT_SIM_COMPLETE=fish_source agent-sim)')
