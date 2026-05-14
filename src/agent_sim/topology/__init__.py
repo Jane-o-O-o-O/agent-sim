@@ -10,3 +10,7 @@ __all__ = [
     "TopologyType",
     "build_topology",
 ]
+
+from agent_sim.topology.dynamic import DynamicTopology, TopologySnapshot  # noqa: E402
+
+__all__ += ["DynamicTopology", "TopologySnapshot"]

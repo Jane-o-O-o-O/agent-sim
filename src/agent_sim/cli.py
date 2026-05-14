@@ -13,8 +13,13 @@ import click
 from agent_sim import __version__
 
 
+def _get_version() -> str:
+    """获取版本号。"""
+    return __version__
+
+
 @click.group()
-@click.version_option(version=__version__, prog_name="agent-sim")
+@click.version_option(version=_get_version(), prog_name="agent-sim")
 @click.option("-v", "--verbose", is_flag=True, help="启用详细日志输出")
 def main(verbose: bool) -> None:
     """Agent Sim - 多智能体仿真框架。
@@ -235,6 +240,8 @@ def info() -> None:
     click.echo("  agent-sim validate scene.yaml    验证场景配置")
     click.echo("  agent-sim compare a.yaml b.yaml  对比两个场景")
     click.echo("  agent-sim info                   显示此信息")
+    click.echo("  agent-sim benchmark              性能基准测试")
+    click.echo("  agent-sim plugins                查看插件信息")
 
 
 if __name__ == "__main__":
@@ -573,3 +580,76 @@ def batch(config_path: str, runs: int, steps: int | None, timeout: float,
     if output_path:
         Path(output_path).write_text(result_json, encoding="utf-8")
         click.echo(f"\n结果已保存到: {output_path}", err=True)
+
+
+@main.command()
+@click.option("--agents", default="10,50,100", help="Agent 数量梯度，逗号分隔")
+@click.option("--steps", default=10, type=int, help="仿真步数")
+@click.option("--timeout", default=60.0, type=float, help="超时秒数")
+@click.option("--output", "output_path", default=None, type=click.Path(),
+              help="结果输出文件路径 (JSON)")
+def benchmark(agents: str, steps: int, timeout: float, output_path: str | None) -> None:
+    """运行性能基准测试。
+
+    \\b
+    示例:
+      agent-sim benchmark --agents 10,50,100 --steps 10
+      agent-sim benchmark --agents 10,25,50,100,200 --steps 5 --timeout 120
+    """
+    from agent_sim.scenario.benchmark import BenchmarkRunner
+
+    agent_counts = [int(x.strip()) for x in agents.split(",")]
+
+    async def _run() -> dict[str, Any]:
+        runner = BenchmarkRunner(timeout_seconds=timeout)
+        suite = await runner.run_scale_test(agent_counts=agent_counts, steps=steps)
+        return suite.summary()
+
+    result = asyncio.run(_run())
+    result_json = json.dumps(result, indent=2, ensure_ascii=False)
+    click.echo(result_json)
+
+    if output_path:
+        Path(output_path).write_text(result_json, encoding="utf-8")
+        click.echo(f"\n结果已保存到: {output_path}", err=True)
+
+
+@main.command()
+def plugins() -> None:
+    """显示已注册的插件信息。
+
+    \\b
+    示例:
+      agent-sim plugins
+    """
+    from agent_sim.scenario.plugins import PluginRegistry
+
+    registry = PluginRegistry()
+    discovered = registry.discover()
+    summary = registry.summary()
+
+    click.echo("Agent Sim 插件注册表")
+    click.echo(f"已发现: {discovered} 个插件")
+    click.echo(f"已注册: {summary['total']} 个插件")
+    click.echo()
+
+    if summary["agents"] > 0:
+        click.echo("Agent 类型:")
+        for p in summary["plugins"]:
+            if p["type"] == "agent":
+                click.echo(f"  - {p['name']} ({p['module']})")
+
+    if summary["evaluators"] > 0:
+        click.echo("Evaluator 类型:")
+        for p in summary["plugins"]:
+            if p["type"] == "evaluator":
+                click.echo(f"  - {p['name']} ({p['module']})")
+
+    if summary["middlewares"] > 0:
+        click.echo("Middleware 类型:")
+        for p in summary["plugins"]:
+            if p["type"] == "middleware":
+                click.echo(f"  - {p['name']} ({p['module']})")
+
+    if summary["total"] == 0:
+        click.echo("(暂无注册插件)")
