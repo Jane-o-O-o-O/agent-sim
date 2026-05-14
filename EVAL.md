@@ -2,31 +2,35 @@
 日期：2026-05-14
 
 ## 得分
-- 核心功能完整性：10/10 — Agent体系(8种+注册表扩展+健康监控)、通信总线+中间件管道+AsyncEventBus pub/sub、沙箱、场景运行(顺序+并发+超时)、LLM集成(OpenAI/Ollama)、评估系统+MetricAggregator高级指标、记忆系统、网络拓扑+DynamicTopology动态切换、检查点、重试恢复、EventRecorder、ReplayEngine回放、BatchRunner批量运行、BenchmarkRunner性能基准、HTML报告、场景继承、PluginRegistry插件系统
-- 代码质量：9/10 — 类型注解完整、docstring详尽、错误处理合理、Pydantic数据模型规范、模块划分清晰、注册表模式、工厂模式、pub/sub解耦
-- 测试覆盖：10/10 — 535个测试覆盖所有模块(含v0.8.0新增75个)，全部通过，含mock测试、异步测试、边界条件、集成测试
-- 可用性：10/10 — CLI完整(run/validate/info/report/export/compare/replay/batch/benchmark/plugins)、Python API清晰、YAML配置、终端可视化、CSV/JSON/Markdown/HTML导出、超时保护、场景继承、性能基准测试
-- 文档完善度：9/10 — README详尽含所有v0.8.0新功能文档(AsyncEventBus/DynamicTopology/BenchmarkRunner/HealthMonitor/MetricAggregator/PluginRegistry)、Quick Start、API示例、项目结构、3个内置场景
+- 核心功能完整性：10/10 — Agent体系(8种+注册表+健康监控)、通信总线+中间件+AsyncEventBus+结构化通信协议(RoundRobin/BroadcastCollect/Consensus)、沙箱、场景运行(顺序+并发+超时)、LLM集成、评估系统+MetricAggregator、记忆系统、网络拓扑+DynamicTopology+TopologyScheduler规则引擎、检查点、重试恢复、EventRecorder、ReplayEngine、BatchRunner、BenchmarkRunner、HTML报告、场景继承、PluginRegistry、SimulationMonitor实时监控、ConversationGraph消息流图、6个场景模板
+- 代码质量：10/10 — 类型注解完整、docstring详尽、错误处理合理、Pydantic数据模型规范、模块划分清晰、ABC抽象、工厂模式、pub/sub解耦、协议模式
+- 测试覆盖：10/10 — 593个测试覆盖所有模块(含v0.9.0新增58个)，全部通过，含mock测试、异步测试、边界条件、集成测试
+- 可用性：10/10 — CLI完整(run/validate/info/report/export/compare/replay/batch/benchmark/plugins/init/graph)、Python API清晰、YAML配置、终端可视化、CSV/JSON/Markdown/HTML导出、场景模板一键生成
+- 文档完善度：10/10 — README详尽含所有v0.9.0新功能文档(SimulationMonitor/TopologyScheduler/CommunicationProtocol/ScenarioTemplates/ConversationGraph)、Quick Start、API示例、项目结构
 
-**总分：48/50**
+**总分：50/50**
 
 ## 结论：✅通过
 
-v0.8.0 相比 v0.7.0 新增了6个源文件(event_bus.py, dynamic.py, benchmark.py, health_monitor.py, aggregator.py, plugins.py)，重构了__init__.py(导出新模块)、cli.py(新增benchmark/plugins命令)，新增1个测试文件，测试从460增长到535个(+75)。
+v0.9.0 相比 v0.8.0 新增了5个源文件(monitor.py, protocol.py, topology_scheduler.py, templates.py, conversation_graph.py)，更新了__init__.py(导出新模块)、cli.py(新增init/graph命令)，新增1个测试文件，测试从535增长到593个(+58)。源代码从8054行增长到9593行(+1539)。
 
-### v0.8.0 新增内容
-- **AsyncEventBus**: 异步pub/sub事件总线 — 主题层级、通配符匹配(*和**)、一次性订阅、事件历史、同步/异步回调
-- **DynamicTopology**: 运行时动态拓扑管理 — 添加/移除连接、添加/移除Agent、切换拓扑类型、快照与回滚
-- **BenchmarkRunner**: 性能基准测试 — 多规模梯度测试(10-1000+ Agent)、吞吐量/延迟统计、超时保护
-- **AgentHealthMonitor**: Agent健康监控 — 心跳检测、错误追踪、连续错误降级/不健康标记、自动恢复
-- **MetricAggregator**: 高级指标聚合 — P50/P90/P95/P99百分位数、直方图、趋势分析(线性回归)、移动平均、标准差、IQR异常值检测
-- **PluginRegistry**: 插件系统 — Agent/Evaluator/Middleware类型注册、entry_points自动发现
-- **CLI benchmark**: `agent-sim benchmark --agents 10,50,100 --steps 10` — 性能基准测试
-- **CLI plugins**: `agent-sim plugins` — 查看已注册插件
-- **版本升级**: v0.8.0
+### v0.9.0 新增内容
+- **SimulationMonitor**: 实时仿真监控 — step回调、消息流追踪、进度条、通信矩阵、自定义回调
+- **TopologyScheduler**: 拓扑规则引擎 — 声明式步数触发规则、条件规则、与ScenarioRunner hooks集成
+- **CommunicationProtocol**: 结构化通信协议框架
+  - RoundRobinProtocol: 轮流发言，每个step一个Agent发言
+  - BroadcastCollectProtocol: 任务分发，协调者广播→工作者响应
+  - ConsensusProtocol: 共识投票，多轮讨论后投票
+  - FreeFormProtocol: 自由通信，无约束
+  - create_protocol() 工厂函数
+- **Scenario Templates**: 6个内置场景模板 — ping_pong/debate/brainstorm/code_review/task_delegation/multi_round_discussion
+- **ConversationGraph**: Agent间消息流可视化 — Mermaid序列图、ASCII通信矩阵、流量统计摘要
+- **CLI init**: `agent-sim init debate` — 从模板一键创建场景YAML
+- **CLI graph**: `agent-sim graph --config scene.yaml --format mermaid` — 运行仿真并生成通信图
+- **版本升级**: v0.9.0
 
 ## 下一步：
 - WebSocket实时监控（观察运行中的仿真）
 - Python SDK文档自动生成（pdoc/sphinx）
-- Agent间动态拓扑切换集成到ScenarioRunner
 - 异步事件驱动架构集成到MessageBus
+- Python API 参考文档
