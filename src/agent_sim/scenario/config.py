@@ -9,6 +9,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
+from agent_sim.exceptions import ConfigValidationError, ScenarioFileNotFoundError
+
 logger = logging.getLogger(__name__)
 
 
@@ -175,7 +177,7 @@ def _resolve_extends(data: dict[str, Any], base_dir: Path) -> dict[str, Any]:
 
     parent_path = base_dir / extends
     if not parent_path.exists():
-        raise FileNotFoundError(f"父场景文件不存在: {parent_path}")
+        raise ScenarioFileNotFoundError(f"父场景文件不存在: {parent_path}")
 
     logger.info("加载父场景: %s", parent_path)
     with open(parent_path) as f:
@@ -217,7 +219,7 @@ def load_scenario(path: str | Path) -> ScenarioConfig:
     """
     path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(f"场景文件不存在: {path}")
+        raise ScenarioFileNotFoundError(f"场景文件不存在: {path}")
 
     logger.info("加载场景配置: %s", path)
 
@@ -225,10 +227,10 @@ def load_scenario(path: str | Path) -> ScenarioConfig:
         try:
             data = yaml.safe_load(f)
         except yaml.YAMLError as e:
-            raise ValueError(f"YAML 解析错误: {e}") from e
+            raise ConfigValidationError(f"YAML 解析错误: {e}") from e
 
     if not isinstance(data, dict):
-        raise ValueError(f"场景文件格式错误: 顶层应为字典，实际为 {type(data).__name__}")
+        raise ConfigValidationError(f"场景文件格式错误: 顶层应为字典，实际为 {type(data).__name__}")
 
     # 解析 extends 继承
     data = _resolve_extends(data, path.parent)
@@ -236,7 +238,7 @@ def load_scenario(path: str | Path) -> ScenarioConfig:
     try:
         config = ScenarioConfig(**data)
     except Exception as e:
-        raise ValueError(f"场景配置验证失败: {e}") from e
+        raise ConfigValidationError(f"场景配置验证失败: {e}") from e
 
     logger.info(
         "场景加载成功: name=%s, agents=%d, steps=%d",

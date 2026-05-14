@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from agent_sim.agent.llm_agent import LLMBackend
+from agent_sim.exceptions import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ class OpenAIBackend(LLMBackend):
             return content
         except Exception as e:
             logger.error("OpenAI API 调用失败: %s", e)
-            raise RuntimeError(f"OpenAI API 调用失败: {e}") from e
+            raise LLMError(f"OpenAI API 调用失败: {e}") from e
 
     async def close(self) -> None:
         """关闭客户端连接。"""

@@ -14,6 +14,7 @@ from agent_sim.communication.message import Message
 from agent_sim.environment.sandbox import Sandbox
 from agent_sim.metrics.collector import MetricsCollector
 from agent_sim.scenario.hooks import LifecycleHooks
+from agent_sim.exceptions import SimulationTimeout
 
 logger = logging.getLogger(__name__)
 

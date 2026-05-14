@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+from agent_sim.exceptions import TopologyError
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ def build_topology(
         3
     """
     if not agents:
-        raise ValueError("agents 列表不能为空")
+        raise TopologyError("agents 列表不能为空")
 
     topo = NetworkTopology(topology_type=topology_type, agents=list(agents), center=center)
 
@@ -238,7 +239,7 @@ def _build_star(topo: NetworkTopology, agents: list[str], center: str | None) ->
     """构建星型拓扑。"""
     hub = center or agents[0]
     if hub not in agents:
-        raise ValueError(f"中心节点 '{hub}' 不在 agents 列表中")
+        raise TopologyError(f"中心节点 '{hub}' 不在 agents 列表中")
     for agent in agents:
         if agent != hub:
             topo.add_link(hub, agent, bidirectional=True)
@@ -254,7 +255,7 @@ def _build_tree(topo: NetworkTopology, agents: list[str], center: str | None) ->
     """构建二叉树拓扑（BFS 方式填充）。"""
     root = center or agents[0]
     if root not in agents:
-        raise ValueError(f"根节点 '{root}' 不在 agents 列表中")
+        raise TopologyError(f"根节点 '{root}' 不在 agents 列表中")
     others = [a for a in agents if a != root]
     queue = [root]
     idx = 0

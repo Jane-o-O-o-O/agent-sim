@@ -5,6 +5,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from agent_sim.communication.message import Message, MessageType
+from agent_sim.exceptions import AgentAlreadyExistsError, AgentNotRegisteredError
 
 if TYPE_CHECKING:
     from agent_sim.agent.base import Agent
@@ -62,7 +63,7 @@ class MessageBus:
             ValueError: 同名 Agent 已注册
         """
         if agent.name in self._agents:
-            raise ValueError(f"Agent '{agent.name}' 已注册")
+            raise AgentAlreadyExistsError(f"Agent '{agent.name}' 已注册")
         self._agents[agent.name] = agent
 
     def unregister(self, name: str) -> None:
@@ -72,7 +73,7 @@ class MessageBus:
             KeyError: Agent 不存在
         """
         if name not in self._agents:
-            raise KeyError(f"Agent '{name}' 未注册")
+            raise AgentNotRegisteredError(f"Agent '{name}' 未注册")
         del self._agents[name]
 
     def send(self, message: Message) -> None:

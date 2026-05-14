@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from agent_sim.agent.llm_agent import EchoLLMBackend, LLMBackend
+from agent_sim.exceptions import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ class OpenAIBackend(LLMBackend):
         self.extra_headers = extra_headers or {}
 
         if not self.api_key:
-            raise ValueError(
+            raise LLMError(
                 "OpenAI API key required. Pass api_key or set OPENAI_API_KEY env var."
             )
 
@@ -229,7 +230,7 @@ def create_backend(provider: str, **kwargs: Any) -> LLMBackend:
     }
 
     if provider not in providers:
-        raise ValueError(
+        raise LLMError(
             f"Unknown LLM backend: '{provider}'. "
             f"Available: {list(providers.keys())}"
         )

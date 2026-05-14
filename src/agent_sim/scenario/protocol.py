@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from agent_sim.agent.base import Agent
 from agent_sim.communication.bus import MessageBus
 from agent_sim.communication.message import Message, MessageType
+from agent_sim.exceptions import ProtocolError
 
 logger = logging.getLogger(__name__)
 
@@ -397,7 +398,7 @@ def create_protocol(
         if isinstance(protocol_type, str):
             protocol_type = ProtocolType(protocol_type)
     except ValueError:
-        raise ValueError(f"Unknown protocol type: {protocol_type}") from None
+        raise ProtocolError(f"Unknown protocol type: {protocol_type}") from None
 
     if protocol_type == ProtocolType.ROUND_ROBIN:
         return RoundRobinProtocol(agents, topic=kwargs.get("topic", ""))
@@ -414,7 +415,7 @@ def create_protocol(
     elif protocol_type == ProtocolType.FREE_FORM:
         return FreeFormProtocol(agents)
     else:
-        raise ValueError(f"Unknown protocol type: {protocol_type}")
+        raise ProtocolError(f"Unknown protocol type: {protocol_type}")
 
 
 class FreeFormProtocol(CommunicationProtocol):

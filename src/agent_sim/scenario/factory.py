@@ -15,6 +15,7 @@ from agent_sim.communication.bus import MessageBus
 from agent_sim.communication.message import Message, MessageType
 from agent_sim.environment.sandbox import Sandbox
 from agent_sim.scenario.config import AgentConfig, ScenarioConfig
+from agent_sim.exceptions import AgentTypeError, AgentAlreadyExistsError, AgentNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ def register_agent_type(type_name: str, factory: AgentFactory) -> None:
         >>> register_agent_type("my_agent", lambda cfg: MyAgent(name=cfg.name))
     """
     if type_name in _AGENT_REGISTRY:
-        raise ValueError(f"Agent 类型 '{type_name}' 已注册")
+        raise AgentAlreadyExistsError(f"Agent 类型 '{type_name}' 已注册")
     _AGENT_REGISTRY[type_name] = factory
     logger.info("注册 Agent 类型: %s", type_name)
 
@@ -100,7 +101,7 @@ def unregister_agent_type(type_name: str) -> None:
         KeyError: 类型不存在
     """
     if type_name not in _AGENT_REGISTRY:
-        raise KeyError(f"Agent 类型 '{type_name}' 未注册")
+        raise AgentNotFoundError(f"Agent 类型 '{type_name}' 未注册")
     del _AGENT_REGISTRY[type_name]
 
 
@@ -244,7 +245,7 @@ def _create_agent(config: AgentConfig) -> Agent:
     """
     factory = _AGENT_REGISTRY.get(config.type)
     if factory is None:
-        raise ValueError(
+        raise AgentTypeError(
             f"不支持的 Agent 类型: {config.type}，"
             f"可选: {list(_AGENT_REGISTRY.keys())}"
         )
@@ -264,14 +265,14 @@ def _load_custom_agent(config: AgentConfig) -> Agent:
         ValueError: 配置缺少 module 或 class_name
     """
     if not config.module or not config.class_name:
-        raise ValueError("自定义 Agent 必须指定 module 和 class_name")
+        raise AgentTypeError("自定义 Agent 必须指定 module 和 class_name")
 
     logger.info("加载自定义 Agent: %s.%s", config.module, config.class_name)
     mod = importlib.import_module(config.module)
     agent_cls = getattr(mod, config.class_name)
 
     if not (isinstance(agent_cls, type) and issubclass(agent_cls, Agent)):
-        raise ValueError(f"{config.module}.{config.class_name} 不是 Agent 子类")
+        raise AgentTypeError(f"{config.module}.{config.class_name} 不是 Agent 子类")
 
     role = Role(name=config.role, goals=config.goals)
     return agent_cls(

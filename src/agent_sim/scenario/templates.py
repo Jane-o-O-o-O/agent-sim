@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from agent_sim.exceptions import TemplateError
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ def get_template(name: str) -> dict[str, Any]:
     """
     import copy
     if name not in _TEMPLATES:
-        raise KeyError(f"Template '{name}' not found. Available: {list_templates()}")
+        raise TemplateError(f"Template '{name}' not found. Available: {list_templates()}")
     return copy.deepcopy(_TEMPLATES[name])
 
 

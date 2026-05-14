@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from agent_sim.agent.base import Agent
 from agent_sim.environment.state import EnvironmentState
+from agent_sim.exceptions import AgentAlreadyExistsError, AgentNotFoundError
 
 
 class Sandbox(BaseModel):
@@ -51,7 +52,7 @@ class Sandbox(BaseModel):
             ValueError: 同名 Agent 已存在
         """
         if agent.name in self.agents:
-            raise ValueError(f"Agent '{agent.name}' 已存在")
+            raise AgentAlreadyExistsError(f"Agent '{agent.name}' 已存在")
         self.agents[agent.name] = agent
 
     def get_agent(self, name: str) -> Agent | None:
@@ -75,7 +76,7 @@ class Sandbox(BaseModel):
             KeyError: Agent 不存在
         """
         if name not in self.agents:
-            raise KeyError(f"Agent '{name}' 不存在")
+            raise AgentNotFoundError(f"Agent '{name}' 不存在")
         del self.agents[name]
 
     def advance(self) -> None:
