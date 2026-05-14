@@ -653,3 +653,87 @@ def plugins() -> None:
 
     if summary["total"] == 0:
         click.echo("(暂无注册插件)")
+
+
+@main.command()
+@click.argument("template_name")
+@click.option("--output", "-o", "output_path", default=None, type=click.Path(),
+              help="输出文件路径 (默认: <template_name>.yaml)")
+def init(template_name: str, output_path: str | None) -> None:
+    """从模板创建场景 YAML 配置文件。
+
+    \b
+    可用模板:
+      ping_pong        Ping-Pong 通信测试
+      debate           结构化辩论
+      brainstorm       头脑风暴
+      code_review      代码审查
+      task_delegation  任务分配
+      multi_round_discussion  多轮讨论
+
+    \b
+    示例:
+      agent-sim init ping_pong
+      agent-sim init debate -o my_debate.yaml
+      agent-sim init brainstorm --output scenarios/brainstorm.yaml
+    """
+    from agent_sim.scenario.templates import get_template, list_templates, save_template_to_yaml
+
+    if template_name == "list":
+        click.echo("可用模板:")
+        for name in list_templates():
+            t = get_template(name)
+            click.echo(f"  {name:<25} {t.get('description', '')}")
+        return
+
+    try:
+        path = output_path or f"{template_name}.yaml"
+        result = save_template_to_yaml(template_name, path)
+        click.echo(f"✅ 场景文件已创建: {result}")
+        click.echo(f"   运行: agent-sim run --config {result}")
+    except KeyError:
+        click.echo(f"❌ 未知模板: {template_name}", err=True)
+        click.echo(f"   可用模板: {', '.join(list_templates())}", err=True)
+        raise SystemExit(1)
+
+
+@main.command()
+@click.option("--config", "config_path", required=True, type=click.Path(exists=True),
+              help="YAML 场景配置文件路径")
+@click.option("--steps", default=None, type=int, help="仿真步数")
+@click.option("--format", "fmt", type=click.Choice(["mermaid", "ascii", "summary"]), default="mermaid",
+              help="输出格式")
+def graph(config_path: str, steps: int | None, fmt: str) -> None:
+    """运行仿真并生成通信流图。
+
+    \b
+    示例:
+      agent-sim graph --config scene.yaml --format mermaid
+      agent-sim graph --config scene.yaml --format ascii
+      agent-sim graph --config scene.yaml --format summary
+    """
+    result = asyncio.run(_run_and_graph(config_path, steps, fmt))
+    click.echo(result)
+
+
+async def _run_and_graph(config_path: str, steps: int | None, fmt: str) -> str:
+    """运行仿真并生成通信图。"""
+    from agent_sim.scenario.config import load_scenario
+    from agent_sim.scenario.factory import build_scenario
+    from agent_sim.scenario.runner import ScenarioRunner
+    from agent_sim.viz.conversation_graph import ConversationGraph
+
+    config = load_scenario(config_path)
+    sandbox, bus = build_scenario(config)
+    runner = ScenarioRunner(sandbox=sandbox, bus=bus)
+    n_steps = steps or config.steps
+    result = await runner.run(steps=n_steps)
+
+    graph = ConversationGraph.from_history(result.message_history)
+
+    if fmt == "mermaid":
+        return graph.to_mermaid(title=config.name)
+    elif fmt == "ascii":
+        return graph.to_ascii_matrix()
+    else:
+        return graph.to_flow_summary()

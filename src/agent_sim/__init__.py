@@ -74,6 +74,19 @@ from agent_sim.scenario.plugins import PluginRegistry
 from agent_sim.scenario.recorder import EventRecorder, EventType, SimulationEvent
 from agent_sim.scenario.replay import ReplayEngine
 from agent_sim.scenario.runner import RunResult, ScenarioRunner, SimulationTimeout
+from agent_sim.scenario.monitor import MonitorConfig, SimulationMonitor, StepSnapshot
+from agent_sim.scenario.protocol import (
+    BroadcastCollectProtocol,
+    CommunicationProtocol,
+    ConsensusProtocol,
+    FreeFormProtocol,
+    ProtocolResult,
+    ProtocolType,
+    RoundRobinProtocol,
+    create_protocol,
+)
+from agent_sim.scenario.topology_scheduler import TopologyRule, TopologyScheduler
+from agent_sim.scenario.templates import get_template, list_templates, save_template_to_yaml, template_info
 from agent_sim.topology.dynamic import DynamicTopology, TopologySnapshot
 from agent_sim.topology.topology import (
     NetworkTopology,
@@ -81,8 +94,9 @@ from agent_sim.topology.topology import (
     build_topology,
 )
 from agent_sim.viz.charts import bar_chart, line_chart, metrics_table, sparkline
+from agent_sim.viz.conversation_graph import ConversationGraph
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "Agent",
@@ -176,4 +190,22 @@ __all__ = [
     "setup_logging",
     "sparkline",
     "unregister_agent_type",
+    "SimulationMonitor",
+    "MonitorConfig",
+    "StepSnapshot",
+    "RoundRobinProtocol",
+    "BroadcastCollectProtocol",
+    "ConsensusProtocol",
+    "FreeFormProtocol",
+    "CommunicationProtocol",
+    "ProtocolResult",
+    "ProtocolType",
+    "create_protocol",
+    "TopologyScheduler",
+    "TopologyRule",
+    "ConversationGraph",
+    "get_template",
+    "list_templates",
+    "template_info",
+    "save_template_to_yaml",
 ]
