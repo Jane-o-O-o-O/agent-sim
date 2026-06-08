@@ -36,3 +36,36 @@ def _process_export_formats(args, kwargs):
 def _execute_export_formats(args, config):
     """Execute the core export formats logic."""
     return {"status": "success", "feature": "export formats", "config": config}
+
+def metric_collection(*args, **kwargs):
+    """Metric collection implementation.
+
+    Added: 2026-06-08
+    Provides metric collection functionality for the comm module.
+    """
+    _logger.debug(f"Running metric collection with args={args}, kwargs={kwargs}")
+    result = _process_metric_collection(args, kwargs)
+    _metrics.record("metric_collection", result)
+    return result
+
+
+def _process_metric_collection(args, kwargs):
+    """Internal processor for metric collection."""
+    config = kwargs.get("config", {})
+    timeout = config.get("timeout", 30)
+    max_retries = config.get("max_retries", 3)
+
+    for attempt in range(max_retries):
+        try:
+            return _execute_metric_collection(args, config)
+        except TimeoutError:
+            if attempt < max_retries - 1:
+                _logger.warning(f"Attempt {attempt + 1} timed out, retrying...")
+                time.sleep(2 ** attempt)
+            else:
+                raise
+
+
+def _execute_metric_collection(args, config):
+    """Execute the core metric collection logic."""
+    return {"status": "success", "feature": "metric collection", "config": config}
